@@ -1,0 +1,140 @@
+:root {
+  --canopy: #acff46;
+  --fog: #8f8f8f;
+  --carbon: #0a0a0a;
+  --white: #fff;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; background: #05060a; overflow: hidden; }
+
+#gl {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 0;
+}
+
+/* ---------- Loader / Enter ---------- */
+.loader {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #05060a;
+  color: var(--white);
+  transition: opacity 1.1s ease;
+}
+.loader.done { opacity: 0; pointer-events: none; }
+.loader__bar {
+  width: min(420px, 60vw);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.loader__bar span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--canopy);
+  transition: width 0.25s ease;
+}
+.loader__label {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  opacity: 0.7;
+}
+.loader__enter { display: flex; gap: 14px; margin-top: 8px; }
+.loader__enter.hidden { display: none; }
+.loader__enter button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: var(--white);
+  padding: 12px 20px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  transition: background 0.3s, color 0.3s;
+}
+.loader__enter button:hover { background: var(--canopy); color: #000; border-color: var(--canopy); }
+
+/* ---------- Foreground UI ---------- */
+.topbar, .meta { position: fixed; z-index: 10; color: var(--white); pointer-events: none; }
+.topbar { top: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 22px 26px; }
+.topbar__brand { font-size: 10px; letter-spacing: 0.18em; line-height: 1.5; opacity: 0.85; }
+.topbar__nav { pointer-events: auto; display: flex; gap: 6px; }
+.topbar__nav a {
+  color: #000; background: var(--white); text-decoration: none;
+  font-size: 10px; letter-spacing: 0.12em; padding: 7px 12px;
+}
+
+.list {
+  position: fixed;
+  z-index: 10;
+  top: 64px;
+  left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.list a {
+  pointer-events: auto;
+  color: var(--white);
+  text-decoration: none;
+  font-weight: 800;
+  font-size: clamp(22px, 3.4vw, 46px);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  opacity: 0.92;
+  transition: opacity 0.35s ease, transform 0.4s cubic-bezier(.2,.8,.2,1);
+  mix-blend-mode: difference;
+}
+.list a:hover { opacity: 1; transform: translateX(10px); }
+.list.dim a:not(.active) { opacity: 0.35; }
+
+/* ---------- Build-stack panel ---------- */
+.panel {
+  position: fixed;
+  z-index: 20;
+  top: 80px;
+  right: 18px;
+  width: 188px;
+  padding: 12px;
+  background: rgba(8, 10, 14, 0.62);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  user-select: none;
+}
+.panel__head { font-weight: 700; letter-spacing: 0.2em; opacity: 0.8; margin-bottom: 8px; }
+.panel__btns { display: flex; gap: 5px; margin-bottom: 10px; }
+.panel__btns button {
+  flex: 1; background: transparent; border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #fff; font-size: 9px; letter-spacing: 0.06em; padding: 6px 2px; cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.panel__btns button:hover { background: var(--canopy); color: #000; border-color: var(--canopy); }
+.panel__list { display: flex; flex-direction: column; gap: 1px; }
+.panel__row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 4px; cursor: pointer;
+  transition: opacity 0.2s; border-radius: 2px;
+}
+.panel__row:hover { background: rgba(255, 255, 255, 0.06); }
+.panel__row.off { opacity: 0.4; }
+.panel__row input { accent-color: var(--canopy); margin: 0; cursor: pointer; }
+.panel__hint { margin-top: 10px; font-size: 8px; line-height: 1.5; opacity: 0.5; letter-spacing: 0.04em; }
+
+.meta { bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; padding: 22px 26px; }
+.meta span { font-size: 10px; letter-spacing: 0.18em; line-height: 1.5; opacity: 0.7; }
+.meta__avail { text-align: right; }

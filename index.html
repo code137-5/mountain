@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glenn — Replica Study</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- WebGL canvas mounts here -->
+    <canvas id="gl"></canvas>
+
+    <!-- Loading / enter overlay -->
+    <div id="loader" class="loader">
+      <div class="loader__bar"><span id="loaderFill"></span></div>
+      <div class="loader__label">LOADING ASSETS <span id="loaderPct">0</span>/100</div>
+      <div id="enter" class="loader__enter hidden">
+        <button data-sound="on">ENTER WITH SOUND</button>
+        <button data-sound="off">ENTER WITHOUT</button>
+      </div>
+    </div>
+
+    <!-- Foreground UI (the project list overlay) -->
+    <header class="topbar">
+      <div class="topbar__brand">PORTFOLIO OF<br />GLENN — REPLICA</div>
+      <nav class="topbar__nav">
+        <a href="#">ABOUT</a><a href="#">GAME</a><a href="#">EMAIL</a>
+      </nav>
+    </header>
+
+    <main class="list" id="projectList"><!-- filled by JS --></main>
+
+    <footer class="meta">
+      <span class="meta__role">INTERACTIVE<br />ART DIRECTOR</span>
+      <span class="meta__avail">AVAILABLE FOR<br />FREELANCE WORK</span>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
