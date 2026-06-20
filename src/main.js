@@ -25,7 +25,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#05060a');
+scene.background = new THREE.Color('#e8e4d2');
 
 // REAL bundle values: fov 30, position (0, 65, 200), lookAt (0, 0, 0).
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 3000);
@@ -116,15 +116,7 @@ function applyPreset(p) {
 
   U.uMorph.value = 0;
   morphTween = gsap.to(U.uMorph, { value: 1, duration: 1.6, ease: 'power2.inOut' });
-
-  const m = moodFromFog(p.fog);
-  tweenColorTo(U.uColorA.value, m.valley);
-  tweenColorTo(U.uColorB.value, m.ridge);
-  tweenColorTo(U.uFogColor.value, m.haze);
-  tweenColorTo(sky.uniforms.uHorizon.value, m.haze);
-  tweenColorTo(sky.uniforms.uZenith.value, m.zenith);
-  tweenColorTo(water.uniforms.uHorizon.value, m.haze);
-  tweenColorTo(water.uniforms.uDeep.value, m.deep);
+  // (forest prototype: colour is a fixed green world; hover only morphs the mountain shape)
 }
 
 // ---------- mouse: fluid splat + camera parallax ----------
@@ -222,5 +214,7 @@ const panel = new Panel([
   { id: 10, label: 'Composite', on: () => (post.composite.enabled = true), off: () => (post.composite.enabled = false) },
   { id: 11, label: 'Bloom', on: () => (post.bloom.enabled = true), off: () => (post.bloom.enabled = false) },
   { id: 12, label: 'Tonemap', on: () => (renderer.toneMapping = THREE.ACESFilmicToneMapping), off: () => (renderer.toneMapping = THREE.NoToneMapping) },
+  { id: 13, label: 'Rock / Waterfall', on: () => (U.uRockOn.value = 1), off: () => (U.uRockOn.value = 0) },
+  { id: 14, label: 'Forest', on: () => (U.uForestOn.value = 1), off: () => (U.uForestOn.value = 0) },
 ]);
 panel.reset();  // start on bare terrain — only "01 Terrain" checked

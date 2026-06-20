@@ -22,18 +22,14 @@ export class UI {
       const a = document.createElement('a');
       a.href = '#';
       a.textContent = p.name;
-      a.addEventListener('mouseenter', () => {
+      // select on CLICK (not hover); the chosen menu stays until another is clicked
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
         this.list.classList.add('dim');
         [...this.list.children].forEach((el) => el.classList.toggle('active', el === a));
         this.onHover(i);
       });
-      a.addEventListener('click', (e) => e.preventDefault());
       this.list.appendChild(a);
-    });
-    this.list.addEventListener('mouseleave', () => {
-      this.list.classList.remove('dim');
-      [...this.list.children].forEach((el) => el.classList.remove('active'));
-      this.onLeave?.();
     });
   }
 

@@ -53,7 +53,7 @@ export class Post {
     this.composer.addPass(this.composite);
 
     const size = renderer.getSize(new THREE.Vector2());
-    this.bloom = new UnrealBloomPass(size, 0.35, 0.5, 0.85); // strength, radius, threshold (only brightest peaks glow)
+    this.bloom = new UnrealBloomPass(size, 0.15, 0.5, 0.9); // subtle — don't wash out the forest
     this.composer.addPass(this.bloom);
 
     this.composer.addPass(new OutputPass());

@@ -102,8 +102,8 @@ export class Water {
       uDispOffA: U.uDispOffA, uDispOffB: U.uDispOffB,
       uMorph: U.uMorph,
       uTime: { value: 0 },
-      uHorizon: { value: new THREE.Color('#c2c7c8') },
-      uDeep: { value: new THREE.Color('#12171c') },
+      uHorizon: { value: new THREE.Color('#bcd0a8') },  // pale green reflection
+      uDeep: { value: new THREE.Color('#173026') },     // deep green pond
       uCamPos: { value: new THREE.Vector3() },
       uFogNear: { value: 200 },
       uFogFar: { value: 820 },

@@ -31,8 +31,8 @@ const FRAG = /* glsl */ `
 export class Sky {
   constructor() {
     this.uniforms = {
-      uZenith: { value: new THREE.Color('#7d8893') },
-      uHorizon: { value: new THREE.Color('#c2c7c8') },
+      uZenith: { value: new THREE.Color('#cdd6c4') },   // pale green-cream sky
+      uHorizon: { value: new THREE.Color('#e8e4d2') },  // warm cream horizon
     };
     const geo = new THREE.SphereGeometry(900, 32, 16);
     const mat = new THREE.ShaderMaterial({
