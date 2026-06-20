@@ -23,8 +23,10 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   uniform sampler2D tRipple;
   uniform sampler2D tDisp0, tDisp1, tDisp2, tDisp3;
-  uniform vec4 uDispAlpha;
-  uniform float uDispScale;
+  uniform vec4 uDispAlphaA, uDispAlphaB;
+  uniform float uDispScaleA, uDispScaleB;
+  uniform vec2 uDispOffA, uDispOffB;
+  uniform float uMorph;
   uniform float uTime;
   uniform vec3 uHorizon, uDeep, uCamPos;
   uniform float uFogNear, uFogFar;
@@ -39,18 +41,19 @@ const FRAG = /* glsl */ `
     return a + b;
   }
 
-  // terrain world-height directly under a world position (mirrors Terrain.js vertex blend)
+  float sampleH(vec2 c, vec4 alpha) {
+    float wsum = dot(alpha, vec4(1.0)) + 1e-4;
+    return (texture2D(tDisp0, c).r * alpha.x + texture2D(tDisp1, c).r * alpha.y
+          + texture2D(tDisp2, c).r * alpha.z + texture2D(tDisp3, c).r * alpha.w) / wsum;
+  }
+  // terrain world-height directly under a world position (mirrors Terrain.js two-state blend)
   float terrainHeight(vec3 w) {
     vec2 tuv = vec2(w.x / uTerrainSize.x + 0.5, 0.5 - w.z / uTerrainSize.y);
     float inside = step(0.0, tuv.x) * step(tuv.x, 1.0) * step(0.0, tuv.y) * step(tuv.y, 1.0);
-    vec2 c = clamp(tuv, 0.0, 1.0);
-    float wsum = dot(uDispAlpha, vec4(1.0)) + 1e-4;
-    float h = texture2D(tDisp0, c).r * uDispAlpha.x
-            + texture2D(tDisp1, c).r * uDispAlpha.y
-            + texture2D(tDisp2, c).r * uDispAlpha.z
-            + texture2D(tDisp3, c).r * uDispAlpha.w;
-    h /= wsum;
-    return uTerrainBaseY + h * uDispScale * inside;
+    vec2 cc = clamp(tuv, 0.0, 1.0);
+    float hA = sampleH(cc + uDispOffA, uDispAlphaA) * uDispScaleA;
+    float hB = sampleH(cc + uDispOffB, uDispAlphaB) * uDispScaleB;
+    return uTerrainBaseY + mix(hA, hB, uMorph) * inside;
   }
 
   void main() {
@@ -94,8 +97,10 @@ export class Water {
     this.uniforms = {
       tRipple: { value: terrain.textures[2] },
       tDisp0: U.tDisp0, tDisp1: U.tDisp1, tDisp2: U.tDisp2, tDisp3: U.tDisp3,
-      uDispAlpha: U.uDispAlpha,          // shared ref -> morphs with the terrain
-      uDispScale: U.uDispScale,
+      uDispAlphaA: U.uDispAlphaA, uDispAlphaB: U.uDispAlphaB,  // shared two-state morph
+      uDispScaleA: U.uDispScaleA, uDispScaleB: U.uDispScaleB,
+      uDispOffA: U.uDispOffA, uDispOffB: U.uDispOffB,
+      uMorph: U.uMorph,
       uTime: { value: 0 },
       uHorizon: { value: new THREE.Color('#c2c7c8') },
       uDeep: { value: new THREE.Color('#12171c') },

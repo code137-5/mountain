@@ -10,7 +10,7 @@ import { Fluid } from './Fluid.js';
 import { Post } from './Post.js';
 import { UI } from './ui.js';
 import { Panel } from './panel.js';
-import { PROJECTS, DEFAULT_MOOD } from './projects.js';
+import { PROJECTS, DEFAULT } from './projects.js';
 
 // runtime toggles driven by the build-stack panel
 const state = { morph: true, fluid: true };
@@ -27,11 +27,10 @@ renderer.toneMappingExposure = 0.95;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#05060a');
 
-// fov from the real bundle (31.4172). Camera near eye-level looking toward the horizon,
-// so the sky fills the top and the peaks are silhouetted against it.
-const camera = new THREE.PerspectiveCamera(31.4172, window.innerWidth / window.innerHeight, 0.1, 3000);
-camera.position.set(0, 10, 95);
-const camTarget = new THREE.Vector3(0, 42, -150);
+// REAL bundle values: fov 30, position (0, 65, 200), lookAt (0, 0, 0).
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 3000);
+camera.position.set(0, 65, 200);
+const camTarget = new THREE.Vector3(0, 0, 0);
 camera.lookAt(camTarget);
 
 // ---------- OrbitControls: drag to inspect / find a good angle ----------
@@ -68,32 +67,64 @@ const post = new Post(renderer, scene, camera);
 
 // ---------- UI ----------
 const ui = new UI({
-  onHover: (i) => { if (state.morph) applyMood(PROJECTS[i], PROJECTS[i].dispIndex); },
-  onLeave: () => { if (state.morph) applyMood(DEFAULT_MOOD, 0); },
+  onHover: (i) => { if (state.morph) applyPreset(PROJECTS[i]); },
+  onLeave: () => { if (state.morph) applyPreset(DEFAULT); },
   onEnter: () => { started = true; },
 });
 
 manager.onProgress = (_url, loaded, total) => ui.setProgress(loaded / total);
 manager.onLoad = () => ui.ready();
 
-// ---------- hover -> morph (GSAP tweens the displacement alphas + colormap) ----------
+// ---------- hover -> apply the project's REAL scene preset (extracted from the original) ----------
 const U = terrain.uniforms;
-const tweenColor = (col, hex, d = 1.4) => {
-  const c = new THREE.Color(hex);
+const DISP_MULT = 1.6;  // their dispScale (~42-78) -> our plane/camera scale
+const tweenColorTo = (col, c, d = 1.4) =>
   gsap.to(col, { r: c.r, g: c.g, b: c.b, duration: d, ease: 'power2.out' });
-};
-function applyMood(mood, dispIndex) {
-  const target = [0, 0, 0, 0];
-  target[dispIndex] = 1;
-  gsap.to(U.uDispAlpha.value, { x: target[0], y: target[1], z: target[2], w: target[3], duration: 1.6, ease: 'power2.inOut' });
 
-  tweenColor(U.uColorA.value, mood.a);
-  tweenColor(U.uColorB.value, mood.b);
-  tweenColor(U.uFogColor.value, mood.haze);     // terrain horizon haze
-  tweenColor(sky.uniforms.uHorizon.value, mood.haze);
-  tweenColor(sky.uniforms.uZenith.value, mood.sky);
-  tweenColor(water.uniforms.uHorizon.value, mood.haze);
-  tweenColor(water.uniforms.uDeep.value, mood.a);
+// derive valley / ridge / haze colours from the project's single `fog` colour
+function moodFromFog(hex) {
+  const fog = new THREE.Color(hex);
+  const white = new THREE.Color('#ffffff');
+  return {
+    valley: fog.clone().multiplyScalar(0.28),               // dark
+    ridge: fog.clone().lerp(white, 0.25),                   // ~fog, a touch lighter
+    haze: fog.clone().lerp(white, 0.5),                     // bright horizon/fog/sky
+    zenith: fog.clone().lerp(new THREE.Color('#1a2330'), 0.45),
+    deep: fog.clone().multiplyScalar(0.2),
+  };
+}
+
+let morphTween = null;
+function applyPreset(p) {
+  // snapshot the current "to" state into "from", set the new "to", then cross-fade uMorph 0->1.
+  // (blending two fully-formed terrains morphs in place — no UV sliding)
+  if (morphTween) morphTween.progress(1); // finish any in-flight morph first
+  U.uDispAlphaA.value.copy(U.uDispAlphaB.value);
+  U.uDispOffA.value.copy(U.uDispOffB.value);
+  U.uDispScaleA.value = U.uDispScaleB.value;
+  U.uTexScaleA.value = U.uTexScaleB.value;
+  U.uTexOffA.value.copy(U.uTexOffB.value);
+  U.uContrastA.value = U.uContrastB.value;
+
+  const a = [0, 0, 0, 0]; a[p.disp] = 1;
+  U.uDispAlphaB.value.set(a[0], a[1], a[2], a[3]);
+  U.uDispOffB.value.set(p.dispOff[0], p.dispOff[1]);
+  U.uDispScaleB.value = p.dispScale * DISP_MULT;
+  U.uTexScaleB.value = p.texScale;
+  U.uTexOffB.value.set(p.texOff[0], p.texOff[1]);
+  U.uContrastB.value = p.contrast;
+
+  U.uMorph.value = 0;
+  morphTween = gsap.to(U.uMorph, { value: 1, duration: 1.6, ease: 'power2.inOut' });
+
+  const m = moodFromFog(p.fog);
+  tweenColorTo(U.uColorA.value, m.valley);
+  tweenColorTo(U.uColorB.value, m.ridge);
+  tweenColorTo(U.uFogColor.value, m.haze);
+  tweenColorTo(sky.uniforms.uHorizon.value, m.haze);
+  tweenColorTo(sky.uniforms.uZenith.value, m.zenith);
+  tweenColorTo(water.uniforms.uHorizon.value, m.haze);
+  tweenColorTo(water.uniforms.uDeep.value, m.deep);
 }
 
 // ---------- mouse: fluid splat + camera parallax ----------
@@ -118,8 +149,8 @@ function pumpFluid() {
   const dx = (pointer.x - pointer.px) * 1200;
   const dy = (pointer.y - pointer.py) * 1200;
   if (dx === 0 && dy === 0) return;
-  const mood = U.uColorB.value;
-  splatColor.set(mood.r, mood.g, mood.b).multiplyScalar(0.12).addScalar(0.04);
+  const tint = U.uFogColor.value;   // tint the mist with the current haze color
+  splatColor.set(tint.r, tint.g, tint.b).multiplyScalar(0.12).addScalar(0.04);
   fluid.splat(pointer.x, pointer.y, dx, dy, splatColor);
 }
 
@@ -174,21 +205,22 @@ function frame(time) {
 requestAnimationFrame(frame);
 
 // set an initial mood so the scene isn't flat before first hover
-applyMood(DEFAULT_MOOD, 0);
+applyPreset(DEFAULT);
 
 // ---------- build-stack toggle panel ----------
 const setMist = (v) => { post.composite.uniforms.uMist.value = v; post.composite.uniforms.uDistort.value = v > 0 ? 0.0018 : 0; };
-new Panel([
-  { id: 1,  label: 'Terrain',       on: () => scene.add(terrain.mesh),     off: () => scene.remove(terrain.mesh) },
-  { id: 2,  label: 'Color grade',   on: () => (U.uGradeOn.value = 1),       off: () => (U.uGradeOn.value = 0) },
-  { id: 3,  label: 'Lighting',      on: () => (U.uLightOn.value = 1),       off: () => (U.uLightOn.value = 0) },
-  { id: 4,  label: 'Fog / haze',    on: () => (U.uFogOn.value = 1),         off: () => (U.uFogOn.value = 0) },
-  { id: 5,  label: 'Sky',           on: () => scene.add(sky.mesh),          off: () => scene.remove(sky.mesh) },
-  { id: 6,  label: 'Water',         on: () => scene.add(water.mesh),        off: () => scene.remove(water.mesh) },
-  { id: 7,  label: 'Living motion', on: () => (U.uAnimOn.value = 1),        off: () => (U.uAnimOn.value = 0) },
-  { id: 8,  label: 'Hover morph',   on: () => (state.morph = true),         off: () => (state.morph = false) },
-  { id: 9,  label: 'Fluid mist',    on: () => { state.fluid = true; setMist(0.35); }, off: () => { state.fluid = false; setMist(0); } },
-  { id: 10, label: 'Composite',     on: () => (post.composite.enabled = true), off: () => (post.composite.enabled = false) },
-  { id: 11, label: 'Bloom',         on: () => (post.bloom.enabled = true),  off: () => (post.bloom.enabled = false) },
-  { id: 12, label: 'Tonemap',       on: () => (renderer.toneMapping = THREE.ACESFilmicToneMapping), off: () => (renderer.toneMapping = THREE.NoToneMapping) },
+const panel = new Panel([
+  { id: 1, label: 'Terrain', on: () => scene.add(terrain.mesh), off: () => scene.remove(terrain.mesh) },
+  { id: 2, label: 'Color grade', on: () => (U.uGradeOn.value = 1), off: () => (U.uGradeOn.value = 0) },
+  { id: 3, label: 'Lighting', on: () => (U.uLightOn.value = 1), off: () => (U.uLightOn.value = 0) },
+  { id: 4, label: 'Fog / haze', on: () => (U.uFogOn.value = 1), off: () => (U.uFogOn.value = 0) },
+  { id: 5, label: 'Sky', on: () => scene.add(sky.mesh), off: () => scene.remove(sky.mesh) },
+  { id: 6, label: 'Water', on: () => scene.add(water.mesh), off: () => scene.remove(water.mesh) },
+  { id: 7, label: 'Living motion', on: () => (U.uAnimOn.value = 1), off: () => (U.uAnimOn.value = 0) },
+  { id: 8, label: 'Hover morph', on: () => (state.morph = true), off: () => (state.morph = false) },
+  { id: 9, label: 'Fluid mist', on: () => { state.fluid = true; setMist(0.35); }, off: () => { state.fluid = false; setMist(0); } },
+  { id: 10, label: 'Composite', on: () => (post.composite.enabled = true), off: () => (post.composite.enabled = false) },
+  { id: 11, label: 'Bloom', on: () => (post.bloom.enabled = true), off: () => (post.bloom.enabled = false) },
+  { id: 12, label: 'Tonemap', on: () => (renderer.toneMapping = THREE.ACESFilmicToneMapping), off: () => (renderer.toneMapping = THREE.NoToneMapping) },
 ]);
+panel.reset();  // start on bare terrain — only "01 Terrain" checked

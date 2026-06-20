@@ -1,41 +1,31 @@
-// Each project maps to: a heightmap "morph target" (dispIndex 0..3),
-// a colormap mood (low/high grade colors), and a fog color.
-// Colors borrowed from the site's palette (colors.png) + the mood shifts
-// seen in the screen recording (grey -> ember -> violet -> blue -> green).
+// REAL per-project scene settings extracted from the original bundle.js.
+// The original: a GRAYSCALE marble texture (base-grayscale) for the surface, coloured by the
+// project's `fog` colour, on a heightmap chosen per project with its own UV offset + scale.
 
 export const HEIGHTMAPS = [
-  'textures/landscape.jpg',   // 0
-  'textures/terrain003.jpg',  // 1
-  'textures/terrain005.jpg',  // 2
-  'textures/aztec_disp.png',  // 3
+  'textures/landscape-disp.jpg', // 0  landscape-displacement (most common)
+  'textures/vertex-map.jpg',     // 1
+  'textures/terrain005.jpg',     // 2  terrain0052k
+  'textures/landscape.jpg',      // 3  landscape4kdisplacement
 ];
 
-export const COLOR_TEXTURE = 'textures/kleur4.jpg';
+export const COLOR_TEXTURE = 'textures/base-grayscale.jpg'; // grayscale marble — surface detail
 
-// Atmospheric, DESATURATED palettes (the original reads like misty mountains, not a color photo).
-// a = shadowed valley, b = lit ridge, haze = horizon/fog (where terrain melts into sky),
-// sky = zenith color. Keep saturation low so it stays "weather", not "paint".
-const MOODS = {
-  mist:   { a: '#10151a', b: '#3c454c', haze: '#c6cbce', sky: '#9aa8b4' },
-  ember:  { a: '#1d0e07', b: '#7c4a2a', haze: '#d2a276', sky: '#74513a' },
-  violet: { a: '#15101f', b: '#564465', haze: '#c1b3d0', sky: '#52456a' },
-  blue:   { a: '#0c1420', b: '#3a4f66', haze: '#aebfce', sky: '#42587a' },
-  canopy: { a: '#121a0c', b: '#4c5e34', haze: '#bcc7a2', sky: '#4a5c34' },
-};
-
+// disp = heightmap index, dispScale = mountain height, dispOff = heightmap uv offset,
+// fog = the mood/atmosphere colour, texScale/texOff = surface uv, contrast = grayscale contrast.
 export const PROJECTS = [
-  { name: 'Victorinox',             dispIndex: 0, mood: 'mist' },
-  { name: 'Following Wildfire',     dispIndex: 2, mood: 'ember' },
-  { name: 'Coca-Cola x Marshmello', dispIndex: 1, mood: 'ember' },
-  { name: 'Deso',                   dispIndex: 3, mood: 'violet' },
-  { name: 'PolyAI Looped',          dispIndex: 0, mood: 'canopy' },
-  { name: 'Film Secession',         dispIndex: 2, mood: 'mist' },
-  { name: 'Hashgraph Ventures',     dispIndex: 1, mood: 'blue' },
-  { name: 'Ibicash',                dispIndex: 3, mood: 'canopy' },
-  { name: 'Sweetbeats',             dispIndex: 0, mood: 'violet' },
-  { name: 'De Morgen 2020',         dispIndex: 2, mood: 'blue' },
-  { name: 'Microsoft Original Build', dispIndex: 1, mood: 'mist' },
-].map((p) => ({ ...p, ...MOODS[p.mood] }));
+  { name: 'Victorinox',             disp: 0, dispScale: 77.2, dispOff: [0.283, 0.543], fog: '#E8664B', texScale: 1.0,  texOff: [0.283, 0.489], contrast: 2.29 },
+  { name: 'Following Wildfire',     disp: 3, dispScale: 63.0, dispOff: [0.043, -0.283], fog: '#8a8f96', texScale: 1.0,  texOff: [0.0, 0.0],     contrast: 1.07 },
+  { name: 'Coca-Cola x Marshmello', disp: 1, dispScale: 43.5, dispOff: [0.152, 0.0],   fog: '#6C6C6C', texScale: 1.3,  texOff: [0.0, 0.424],   contrast: 1.19 },
+  { name: 'Deso',                   disp: 2, dispScale: 75.0, dispOff: [0.652, 1.0],   fog: '#cebb92', texScale: 1.0,  texOff: [0.0, 0.043],   contrast: 1.11 },
+  { name: 'PolyAI Looped',          disp: 0, dispScale: 42.4, dispOff: [1.0, 0.75],    fog: '#8a8f96', texScale: 1.0,  texOff: [0.229, 0.0],   contrast: 1.15 },
+  { name: 'Film Secession',         disp: 0, dispScale: 60.0, dispOff: [0.0, 0.0],     fog: '#d95a31', texScale: 1.0,  texOff: [0.674, 0.0],   contrast: 0.92 },
+  { name: 'Hashgraph Ventures',     disp: 0, dispScale: 60.0, dispOff: [1.0, 0.087],   fog: '#ff0891', texScale: 3.16, texOff: [0.402, 0.576], contrast: 2.52 },
+  { name: 'Ibicash',                disp: 1, dispScale: 60.0, dispOff: [0.0, 0.0],     fog: '#D61212', texScale: 1.0,  texOff: [0.0, 0.0],     contrast: 1.34 },
+  { name: 'Sweetbeats',             disp: 0, dispScale: 76.1, dispOff: [-0.152, 0.13], fog: '#A04CE8', texScale: 1.52, texOff: [0.283, 0.543], contrast: 1.78 },
+  { name: 'De Morgen 2020',         disp: 0, dispScale: 78.8, dispOff: [0.36, 0.359],  fog: '#a29700', texScale: 2.97, texOff: [0.821, 0.136], contrast: 1.08 },
+  { name: 'Microsoft Original Build', disp: 0, dispScale: 75.0, dispOff: [0.043, 0.087], fog: '#917ef2', texScale: 2.28, texOff: [0.0, 1.0],   contrast: 3.28 },
+];
 
-export const DEFAULT_MOOD = MOODS.mist;
-export { MOODS };
+// neutral grey default (shown before any hover)
+export const DEFAULT = { name: '_', disp: 0, dispScale: 64, dispOff: [0.2, 0.4], fog: '#8a8f96', texScale: 1.0, texOff: [0.2, 0.4], contrast: 1.3 };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { HEIGHTMAPS, COLOR_TEXTURE, DEFAULT_MOOD } from './projects.js';
+import { HEIGHTMAPS, COLOR_TEXTURE } from './projects.js';
 
 /**
  * Terrain = a heavily subdivided plane whose vertices are pushed up by a
@@ -10,51 +10,55 @@ import { HEIGHTMAPS, COLOR_TEXTURE, DEFAULT_MOOD } from './projects.js';
  */
 
 const VERT = /* glsl */ `
-  uniform sampler2D tDisp0;
-  uniform sampler2D tDisp1;
-  uniform sampler2D tDisp2;
-  uniform sampler2D tDisp3;
-  uniform vec4 uDispAlpha;      // weights for the 4 heightmaps (we normalize)
-  uniform float uDispScale;
+  uniform sampler2D tDisp0, tDisp1, tDisp2, tDisp3;
+  uniform vec4 uDispAlphaA, uDispAlphaB;   // from-state / to-state heightmap weights
+  uniform vec2 uDispOffA, uDispOffB;       // from/to heightmap offsets
+  uniform float uDispScaleA, uDispScaleB;  // from/to mountain heights
+  uniform float uMorph;                    // 0 = from, 1 = to  (cross-fade, no UV scroll)
   uniform float uTime;
-  uniform float uAnimOn;        // toggle: living micro-displacement
-  uniform vec2 uTerrainSize;    // (width, depth) for slope -> normal scaling
+  uniform float uAnimOn;
+  uniform vec2 uTerrainSize;
 
   varying float vHeight;
   varying vec2  vUv;
   varying float vViewZ;
-  varying vec3  vNormal;        // world-ish surface normal for lighting
+  varying vec3  vNormal;
 
-  float bh(vec2 uv) {
-    float wsum = dot(uDispAlpha, vec4(1.0)) + 1e-4;
-    float h = texture2D(tDisp0, uv).r * uDispAlpha.x
-            + texture2D(tDisp1, uv).r * uDispAlpha.y
-            + texture2D(tDisp2, uv).r * uDispAlpha.z
-            + texture2D(tDisp3, uv).r * uDispAlpha.w;
-    return h / wsum;
+  float bh(vec2 uv, vec4 alpha, vec2 off) {
+    vec2 s = uv + off;
+    float wsum = dot(alpha, vec4(1.0)) + 1e-4;
+    return (texture2D(tDisp0, s).r * alpha.x + texture2D(tDisp1, s).r * alpha.y
+          + texture2D(tDisp2, s).r * alpha.z + texture2D(tDisp3, s).r * alpha.w) / wsum;
+  }
+  // world height = blend of the two FULLY-FORMED terrains -> morphs in place (no sliding)
+  float worldH(vec2 uv) {
+    return mix(bh(uv, uDispAlphaA, uDispOffA) * uDispScaleA,
+               bh(uv, uDispAlphaB, uDispOffB) * uDispScaleB, uMorph);
   }
 
   void main() {
     vUv = uv;
-    float h = bh(uv);
+    float h = worldH(uv);
 
-    // "living" micro displacement
+    // living micro displacement (small absolute amount)
     float anim = texture2D(tDisp0, uv * 1.7 + vec2(uTime * 0.012, uTime * 0.008)).r;
-    h += (anim - 0.5) * 0.035 * uAnimOn;
-    vHeight = h;
+    h += (anim - 0.5) * 3.0 * uAnimOn;
 
-    // surface normal from the height gradient (finite differences)
+    // normalized height (0-1) for the colour ramp
+    vHeight = mix(bh(uv, uDispAlphaA, uDispOffA), bh(uv, uDispAlphaB, uDispOffB), uMorph);
+
+    // normal from the world-height gradient
     float e = 1.0 / 600.0;
-    float hX = bh(uv + vec2(e, 0.0));
-    float hY = bh(uv + vec2(0.0, e));
+    float hX = worldH(uv + vec2(e, 0.0));
+    float hY = worldH(uv + vec2(0.0, e));
     vNormal = normalize(vec3(
-      -(hX - h) * uDispScale / (e * uTerrainSize.x),
+      -(hX - h) / (e * uTerrainSize.x),
       1.0,
-      -(hY - h) * uDispScale / (e * uTerrainSize.y)
+      -(hY - h) / (e * uTerrainSize.y)
     ));
 
     vec3 pos = position;
-    pos.z += h * uDispScale;     // plane is in XY, displaced along local +Z (=world up after rotation)
+    pos.z += h;
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     vViewZ = -mvPosition.z;
@@ -63,18 +67,22 @@ const VERT = /* glsl */ `
 `;
 
 const FRAG = /* glsl */ `
-  uniform sampler2D tColor;     // kleur4 — used only as subtle light/dark detail, not raw color
-  uniform vec3  uColorA;        // shadowed valley
-  uniform vec3  uColorB;        // lit ridge
-  uniform vec3  uFogColor;      // horizon haze (terrain melts into sky)
+  uniform sampler2D tColor;     // base-grayscale marble — surface detail (grayscale)
+  uniform vec3  uColorA;        // mood: shadowed valley (derived from fog colour)
+  uniform vec3  uColorB;        // mood: lit ridge
+  uniform float uTexScaleA, uTexScaleB;   // from/to surface uv scale
+  uniform vec2  uTexOffA, uTexOffB;       // from/to surface uv offset
+  uniform float uContrastA, uContrastB;   // from/to grayscale contrast
+  uniform float uMorph;
+  uniform vec3  uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
 
   uniform vec3 uSunDir;
   uniform vec3 uSunColor;
-  uniform float uGradeOn;   // toggle: mood color grading
-  uniform float uLightOn;   // toggle: directional lighting
-  uniform float uFogOn;     // toggle: distance haze
+  uniform float uGradeOn;
+  uniform float uLightOn;
+  uniform float uFogOn;
 
   varying float vHeight;
   varying vec2  vUv;
@@ -82,13 +90,16 @@ const FRAG = /* glsl */ `
   varying vec3  vNormal;
 
   void main() {
-    // atmospheric grade: color comes from height (valley->ridge), NOT from the photo
-    float t = smoothstep(0.0, 0.6, vHeight);
-    vec3 grade = mix(uColorA, uColorB, t);
+    // grayscale marble — cross-faded between the two states (no UV scroll)
+    float gA = texture2D(tColor, vUv * uTexScaleA + uTexOffA).r;
+    float gB = texture2D(tColor, vUv * uTexScaleB + uTexOffB).r;
+    float g = mix(gA, gB, uMorph);
+    g = clamp((g - 0.5) * mix(uContrastA, uContrastB, uMorph) + 0.5, 0.0, 1.0);
 
-    // grade OFF -> neutral grey so you can see the bare geometry
-    float detail = dot(texture2D(tColor, vUv).rgb, vec3(0.333));
-    vec3 albedo = mix(vec3(0.55), grade, uGradeOn) * (0.7 + detail * 0.3);
+    // colour from the mood (fog-derived) palette by height, tinted by the grayscale pattern
+    float t = smoothstep(0.0, 0.55, vHeight);
+    vec3 grade = mix(uColorA, uColorB, t);
+    vec3 albedo = mix(vec3(0.5), grade, uGradeOn) * (0.4 + g * 0.75);
 
     // --- directional lighting gives the rock its 3D relief ---
     vec3 n = normalize(vNormal);
@@ -132,16 +143,28 @@ export class Terrain {
       tDisp2: { value: disp[2] },
       tDisp3: { value: disp[3] },
       tColor: { value: color },
-      uDispAlpha: { value: new THREE.Vector4(1, 0, 0, 0) }, // default = landscape (single massif)
-      uDispScale: { value: 108.0 },          // tall but softer single massif
+      // two-state morph (from = A, to = B), cross-faded by uMorph
+      uDispAlphaA: { value: new THREE.Vector4(1, 0, 0, 0) },
+      uDispAlphaB: { value: new THREE.Vector4(1, 0, 0, 0) },
+      uDispOffA: { value: new THREE.Vector2(0.2, 0.4) },
+      uDispOffB: { value: new THREE.Vector2(0.2, 0.4) },
+      uDispScaleA: { value: 108.0 },
+      uDispScaleB: { value: 108.0 },
+      uMorph: { value: 1 },
       uTime: { value: 0 },
       uAnimOn: { value: 1 },
       uGradeOn: { value: 1 },
       uLightOn: { value: 1 },
       uFogOn: { value: 1 },
-      uColorA: { value: c(DEFAULT_MOOD.a) },
-      uColorB: { value: c(DEFAULT_MOOD.b) },
-      uFogColor: { value: c(DEFAULT_MOOD.haze) },
+      uColorA: { value: c('#2a2f35') },
+      uColorB: { value: c('#9aa0a6') },
+      uTexScaleA: { value: 1.0 },
+      uTexScaleB: { value: 1.0 },
+      uTexOffA: { value: new THREE.Vector2(0.2, 0.4) },
+      uTexOffB: { value: new THREE.Vector2(0.2, 0.4) },
+      uContrastA: { value: 1.3 },
+      uContrastB: { value: 1.3 },
+      uFogColor: { value: c('#aeb4ba') },
       uFogNear: { value: 560 },               // mountains stay readable; only the deep background hazes
       uFogFar: { value: 1450 },
       uTerrainSize: { value: new THREE.Vector2(800, 1200) },

@@ -44,7 +44,9 @@ export class UI {
   }
 
   ready() {
-    this.enter.classList.remove('hidden');
+    // auto-enter as soon as assets are loaded — no ENTER buttons, no sound
+    this.loader.classList.add('done');
+    this.onEnter?.(false);
   }
 
   _wireEnter() {
