@@ -112,7 +112,10 @@ export class Water {
       uTerrainBaseY: { value: terrain.mesh.position.y },
     };
     const geo = new THREE.PlaneGeometry(2600, 2600, 1, 1);
-    const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms });
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, // bias behind terrain -> no shoreline z-fighting
+    });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.position.y = waterLevel;

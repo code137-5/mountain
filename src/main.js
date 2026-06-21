@@ -116,7 +116,25 @@ function applyPreset(p) {
 
   U.uMorph.value = 0;
   morphTween = gsap.to(U.uMorph, { value: 1, duration: 1.6, ease: 'power2.inOut' });
-  // (forest prototype: colour is a fixed green world; hover only morphs the mountain shape)
+
+  // atmosphere tinted per menu (soft, painterly — heavily lerped toward cream/green so it isn't garish)
+  const fog = new THREE.Color(p.fog);
+  const haze   = fog.clone().lerp(new THREE.Color('#e6e3d4'), 0.62); // terrain haze + sky horizon + bg
+  const zenith = fog.clone().lerp(new THREE.Color('#cdd6c4'), 0.72);
+  const wHor   = fog.clone().lerp(new THREE.Color('#bcd0a8'), 0.55);
+  const wDeep  = new THREE.Color('#173026').lerp(fog, 0.22);
+  tweenColorTo(U.uFogColor.value, haze);
+  tweenColorTo(sky.uniforms.uHorizon.value, haze);
+  tweenColorTo(sky.uniforms.uZenith.value, zenith);
+  tweenColorTo(water.uniforms.uHorizon.value, wHor);
+  tweenColorTo(water.uniforms.uDeep.value, wDeep);
+  gsap.to(scene.background, { r: haze.r, g: haze.g, b: haze.b, duration: 1.4, ease: 'power2.out' });
+
+  // water level = a fraction of this preset's mountain height (original: peaks rising from water).
+  // 0.55 -> ~55% submerged, mountains rise as islands. Scales per preset.
+  const waterY = terrain.mesh.position.y + 0.55 * (p.dispScale * DISP_MULT);
+  gsap.to(water.mesh.position, { y: waterY, duration: 1.6, ease: 'power2.inOut' });
+  gsap.to(water.uniforms.uWaterLevel, { value: waterY, duration: 1.6, ease: 'power2.inOut' });
 }
 
 // ---------- mouse: fluid splat + camera parallax ----------
@@ -209,12 +227,12 @@ const panel = new Panel([
   { id: 5, label: 'Sky', on: () => scene.add(sky.mesh), off: () => scene.remove(sky.mesh) },
   { id: 6, label: 'Water', on: () => scene.add(water.mesh), off: () => scene.remove(water.mesh) },
   { id: 7, label: 'Living motion', on: () => (U.uAnimOn.value = 1), off: () => (U.uAnimOn.value = 0) },
-  { id: 8, label: 'Hover morph', on: () => (state.morph = true), off: () => (state.morph = false) },
-  { id: 9, label: 'Fluid mist', on: () => { state.fluid = true; setMist(0.35); }, off: () => { state.fluid = false; setMist(0); } },
-  { id: 10, label: 'Composite', on: () => (post.composite.enabled = true), off: () => (post.composite.enabled = false) },
-  { id: 11, label: 'Bloom', on: () => (post.bloom.enabled = true), off: () => (post.bloom.enabled = false) },
-  { id: 12, label: 'Tonemap', on: () => (renderer.toneMapping = THREE.ACESFilmicToneMapping), off: () => (renderer.toneMapping = THREE.NoToneMapping) },
-  { id: 13, label: 'Rock / Waterfall', on: () => (U.uRockOn.value = 1), off: () => (U.uRockOn.value = 0) },
-  { id: 14, label: 'Forest', on: () => (U.uForestOn.value = 1), off: () => (U.uForestOn.value = 0) },
+  { id: 8, label: 'Click morph', on: () => (state.morph = true), off: () => (state.morph = false) },
+  // 9 = fluid sim + its composite, merged into one toggle
+  { id: 9, label: 'Fluid mist', on: () => { state.fluid = true; setMist(0.35); post.composite.enabled = true; }, off: () => { state.fluid = false; setMist(0); post.composite.enabled = false; } },
+  { id: 10, label: 'Bloom', on: () => (post.bloom.enabled = true), off: () => (post.bloom.enabled = false) },
+  { id: 11, label: 'Tonemap', on: () => (renderer.toneMapping = THREE.ACESFilmicToneMapping), off: () => (renderer.toneMapping = THREE.NoToneMapping) },
+  { id: 12, label: 'Rock / Waterfall', on: () => (U.uRockOn.value = 1), off: () => (U.uRockOn.value = 0) },
+  { id: 13, label: 'Forest', on: () => (U.uForestOn.value = 1), off: () => (U.uForestOn.value = 0) },
 ]);
 panel.reset();  // start on bare terrain — only "01 Terrain" checked

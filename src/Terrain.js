@@ -41,9 +41,9 @@ const VERT = /* glsl */ `
     vUv = uv;
     float h = worldH(uv);
 
-    // living micro displacement (small absolute amount)
+    // living micro displacement (very subtle — strong values cause waterline z-fighting)
     float anim = texture2D(tDisp0, uv * 1.7 + vec2(uTime * 0.012, uTime * 0.008)).r;
-    h += (anim - 0.5) * 3.0 * uAnimOn;
+    h += (anim - 0.5) * 0.8 * uAnimOn;
 
     // normalized height (0-1) for the colour ramp
     vHeight = mix(bh(uv, uDispAlphaA, uDispOffA), bh(uv, uDispAlphaB, uDispOffB), uMorph);
@@ -182,10 +182,9 @@ const FRAG = /* glsl */ `
     // bright VIVID-BLUE waterfalls, drawn after lighting so cliff shadow doesn't bury them
     col = mix(col, vec3(0.20, 0.55, 1.0), clamp(wf * uForestOn, 0.0, 1.0));
 
-    // aerial perspective: forest -> pale sage haze, misty -> mood fog colour
-    vec3 haze = mix(uFogColor, vec3(0.80, 0.83, 0.74), uForestOn);
+    // aerial perspective: distant terrain fades into the (per-menu) haze colour
     float fog = smoothstep(uFogNear, uFogFar, vViewZ);
-    col = mix(col, haze, fog * uFogOn);
+    col = mix(col, uFogColor, fog * uFogOn);
 
     gl_FragColor = vec4(col, 1.0);
   }

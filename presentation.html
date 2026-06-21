@@ -3,370 +3,717 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>안개 낀 산은 어떻게 만들어지나 — 12겹의 비밀</title>
+<title>3D 지형 → 채색화 숲 — 전체 프로세스 & 코드 발표</title>
 <style>
   :root{
-    --bg:#0a0c10; --panel:#12151c; --line:#222833;
-    --fg:#e7ebf0; --dim:#8b95a3; --accent:#acff46; --warn:#ff7a4d; --blue:#5aa6ff;
+    --bg:#0b0e0c; --panel:#11150f; --line:#27302150; --line2:#2c3a28;
+    --fg:#e9efe6; --dim:#93a08c; --accent:#9fe24a; --pink:#e58fb0; --blue:#5aa6ff; --warn:#ffb45c;
     --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
     --sans:"Helvetica Neue",Helvetica,Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden}
   .deck{position:fixed;inset:0}
-  .slide{
-    position:absolute;inset:0;display:none;flex-direction:column;
-    padding:52px 64px 70px;opacity:0;transition:opacity .35s ease;
-  }
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;padding:48px 62px 64px;opacity:0;transition:opacity .3s ease;overflow:hidden}
   .slide.active{display:flex;opacity:1}
-  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.28em;color:var(--accent);text-transform:uppercase;margin-bottom:14px}
-  h1{font-size:clamp(28px,4.4vw,58px);line-height:1.05;letter-spacing:-.02em;font-weight:800}
-  h2{font-size:clamp(24px,3.2vw,40px);line-height:1.08;letter-spacing:-.01em;font-weight:800;margin-bottom:6px}
-  .lead{font-size:clamp(15px,1.5vw,20px);color:var(--dim);line-height:1.6;margin-top:14px;max-width:60ch}
-  .cols{display:grid;grid-template-columns:1.05fr 1fr;gap:38px;flex:1;min-height:0;margin-top:22px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.26em;color:var(--accent);text-transform:uppercase;margin-bottom:12px}
+  .sec{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+  h1{font-size:clamp(26px,4vw,52px);line-height:1.06;letter-spacing:-.02em;font-weight:800}
+  h2{font-size:clamp(22px,3vw,38px);line-height:1.08;letter-spacing:-.01em;font-weight:800;margin-bottom:6px}
+  h3{font-size:clamp(16px,1.7vw,21px);color:#fff;margin:14px 0 6px}
+  .lead{font-size:clamp(15px,1.5vw,20px);color:var(--dim);line-height:1.6;margin-top:12px;max-width:64ch}
+  .cols{display:grid;grid-template-columns:1.05fr 1fr;gap:34px;flex:1;min-height:0;margin-top:18px}
   .cols.solo{grid-template-columns:1fr}
-  .body p{font-size:clamp(14px,1.35vw,18px);line-height:1.65;color:#cdd4dd;margin:12px 0}
+  .cols.demo-r{grid-template-columns:1fr 1.1fr}
+  .body p{font-size:clamp(13px,1.3vw,17px);line-height:1.62;color:#cdd6c8;margin:10px 0}
   .body b{color:#fff}
-  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--accent);
-    border:1px solid rgba(172,255,70,.4);border-radius:3px;padding:3px 8px;margin-bottom:10px}
-  ul.plain{list-style:none;margin:14px 0}
-  ul.plain li{position:relative;padding:7px 0 7px 24px;font-size:clamp(13px,1.3vw,17px);line-height:1.55;color:#cdd4dd}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--accent);border:1px solid #3c5a2a;border-radius:4px;padding:3px 9px;margin-bottom:10px}
+  .tag.b{color:var(--blue);border-color:#2c4a6a}
+  .tag.p{color:var(--pink);border-color:#6a2c46}
+  ul.plain{list-style:none;margin:10px 0}
+  ul.plain li{position:relative;padding:6px 0 6px 22px;font-size:clamp(13px,1.25vw,16px);line-height:1.5;color:#cdd6c8}
   ul.plain li::before{content:"▸";position:absolute;left:0;color:var(--accent)}
-  .analogy{background:rgba(90,166,255,.08);border-left:3px solid var(--blue);padding:12px 16px;margin:16px 0;border-radius:0 6px 6px 0}
-  .analogy b{color:var(--blue)}
-  .visual{display:flex;flex-direction:column;gap:12px;min-height:0}
-  .visual img{width:100%;height:auto;max-height:46vh;object-fit:cover;border:1px solid var(--line);border-radius:8px;display:block}
-  .cap{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em}
+  ul.plain li b{color:#fff}
+  .note{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.5;border-left:2px solid var(--line2);padding-left:10px}
+  .analogy{background:rgba(159,226,74,.07);border-left:3px solid var(--accent);padding:11px 15px;margin:14px 0;border-radius:0 6px 6px 0;font-size:14px;color:#d6e0cc}
+  .analogy b{color:var(--accent)}
+  .visual{display:flex;flex-direction:column;gap:10px;min-height:0;justify-content:center}
+  .visual img{width:100%;height:auto;max-height:48vh;object-fit:cover;border:1px solid var(--line2);border-radius:8px;display:block}
+  .cap{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.03em}
   code,pre{font-family:var(--mono)}
-  .code{background:#0d1016;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow:auto}
-  .code .ttl{font-size:10px;letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
-  .code pre{font-size:clamp(11px,1.05vw,14px);line-height:1.6;color:#dfe6ef;white-space:pre-wrap;word-break:break-word}
-  .code .c{color:#647082}      /* comment */
-  .code .k{color:var(--accent)}/* keyword/fn */
-  .code .v{color:var(--blue)}  /* var */
-  .code .n{color:var(--warn)}  /* number */
-  .note{font-size:12px;color:var(--dim);margin-top:8px;line-height:1.5}
-  /* interactive demo */
-  .demo{background:#0d1016;border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-top:10px}
-  .demo canvas{width:100%;height:150px;display:block;background:#06080c;border-radius:6px}
-  .demo .row{display:flex;align-items:center;gap:12px;margin-top:10px}
-  .demo label{font-family:var(--mono);font-size:11px;color:var(--dim);min-width:120px}
+  .code{background:#0a0d09;border:1px solid var(--line2);border-radius:8px;padding:13px 15px;overflow:auto}
+  .code .ttl{font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;margin-bottom:7px}
+  .code pre{font-size:clamp(11px,1vw,13.5px);line-height:1.58;color:#dfe7d6;white-space:pre;overflow-x:auto}
+  .code .c{color:#5f6e54}.code .k{color:var(--accent)}.code .v{color:var(--blue)}.code .n{color:var(--warn)}.code .s{color:var(--pink)}
+  .demo{background:#0a0d09;border:1px solid var(--line2);border-radius:8px;padding:13px 15px}
+  .demo canvas{width:100%;height:230px;display:block;background:#070a06;border-radius:6px}
+  .demo .row{display:flex;align-items:center;gap:11px;margin-top:9px}
+  .demo label{font-family:var(--mono);font-size:11px;color:var(--dim);min-width:96px}
   .demo input[type=range]{flex:1;accent-color:var(--accent)}
-  .demo .val{font-family:var(--mono);font-size:12px;color:var(--accent);min-width:42px;text-align:right}
-  .demo .hint{font-size:11px;color:var(--dim);margin-top:8px}
+  .demo .val{font-family:var(--mono);font-size:12px;color:var(--accent);min-width:46px;text-align:right}
+  .demo .hint{font-size:11.5px;color:var(--dim);margin-top:8px;line-height:1.5}
+  table.layers{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}
+  table.layers td{border:1px solid var(--line2);padding:5px 9px;vertical-align:top}
+  table.layers td:first-child{font-family:var(--mono);color:var(--accent);text-align:center;width:34px}
+  table.layers td b{color:#fff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 26px;margin-top:8px}
   /* title slide */
-  .title{justify-content:center;align-items:flex-start}
-  .title .big{font-size:clamp(34px,6vw,86px);line-height:1.02;font-weight:800;letter-spacing:-.03em}
+  .title{justify-content:center}
+  .title .big{font-size:clamp(30px,5.4vw,74px);line-height:1.04;font-weight:800;letter-spacing:-.03em}
   .title .big em{font-style:normal;color:var(--accent)}
-  .stack{display:flex;flex-wrap:wrap;gap:6px;margin-top:26px;max-width:70ch}
-  .chip{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--dim);border:1px solid var(--line);border-radius:20px;padding:6px 12px}
-  .chip b{color:var(--accent);font-weight:700}
+  .title .big i{font-style:normal;color:var(--pink)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:24px;max-width:80ch}
+  .chip{font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--dim);border:1px solid var(--line2);border-radius:18px;padding:5px 11px}
+  .chip b{color:var(--accent)}
+  .flow{font-family:var(--mono);font-size:13px;line-height:1.9;color:#cdd6c8;white-space:pre;background:#0a0d09;border:1px solid var(--line2);border-radius:8px;padding:14px 16px;overflow:auto}
+  .flow b{color:var(--accent)}
   /* nav */
-  .nav{position:fixed;left:0;right:0;bottom:0;height:54px;display:flex;align-items:center;justify-content:space-between;
-    padding:0 22px;font-family:var(--mono);font-size:12px;color:var(--dim);border-top:1px solid var(--line);background:rgba(10,12,16,.7);backdrop-filter:blur(6px)}
-  .dots{display:flex;gap:6px}
-  .dot{width:7px;height:7px;border-radius:50%;background:#2a313c;cursor:pointer;transition:background .2s}
+  .nav{position:fixed;left:0;right:0;bottom:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:var(--mono);font-size:12px;color:var(--dim);border-top:1px solid var(--line2);background:rgba(11,14,12,.8);backdrop-filter:blur(6px)}
+  .dots{display:flex;gap:5px;flex-wrap:wrap;max-width:62vw}
+  .dot{width:7px;height:7px;border-radius:50%;background:#2a3326;cursor:pointer}
   .dot.on{background:var(--accent)}
-  .nav button{background:transparent;border:1px solid var(--line);color:var(--fg);font-family:var(--mono);font-size:12px;
-    padding:6px 12px;border-radius:4px;cursor:pointer}
+  .dot.sec{background:#46402a}
+  .nav button{background:transparent;border:1px solid var(--line2);color:var(--fg);font-family:var(--mono);font-size:12px;padding:5px 11px;border-radius:4px;cursor:pointer}
   .nav button:hover{border-color:var(--accent);color:var(--accent)}
   .counter{font-variant-numeric:tabular-nums}
-  .hintkey{position:fixed;top:16px;right:20px;font-family:var(--mono);font-size:11px;color:#586273;letter-spacing:.06em}
+  .hintkey{position:fixed;top:14px;right:18px;font-family:var(--mono);font-size:11px;color:#4a5542;letter-spacing:.06em;z-index:5}
+  .progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);z-index:6;transition:width .3s}
 </style>
 </head>
 <body>
+<div class="progress" id="prog"></div>
 <div class="deck" id="deck">
 
   <!-- 0 TITLE -->
   <section class="slide title active">
-    <div class="kicker">glenncatteeuw.com 리버스 분석 · 복제 스터디</div>
-    <div class="big">안개 낀 산은<br>어떻게 만들어지나<br><em>— 12겹의 비밀</em></div>
-    <p class="lead">이 배경은 사진도 동영상도 아닙니다. 컴퓨터가 <b>매 순간(초당 60번)</b> 수백만 개의 점을 직접 계산해 그리는 실시간 3D예요. 그 과정을 12개의 얇은 층으로 쪼개서, 한 겹씩 어떻게 쌓이는지 보여드립니다.</p>
-    <div class="stack">
-      <span class="chip"><b>01</b> 지형</span><span class="chip"><b>02</b> 색</span><span class="chip"><b>03</b> 조명</span>
-      <span class="chip"><b>04</b> 안개</span><span class="chip"><b>05</b> 하늘</span><span class="chip"><b>06</b> 물</span>
-      <span class="chip"><b>07</b> 미세움직임</span><span class="chip"><b>08</b> 모핑</span><span class="chip"><b>09</b> 유체</span>
-      <span class="chip"><b>10</b> 합성</span><span class="chip"><b>11</b> 발광</span><span class="chip"><b>12</b> 톤보정</span>
+    <div class="kicker">Three.js Journey Challenge 24 · Theme: Stylized Nature 🌱 · WebGL / Three.js / GLSL</div>
+    <div class="big">양식화된 자연 —<br><em>3D 지형</em> 위에<br><i>절차적 채색화 숲</i></div>
+    <p class="lead">"Stylized Nature" 주제로, GPU가 매 프레임 산을 빚고 나무·암석·폭포·물을 셰이더로 그려내는 인터랙티브 풍경. 그 전체를 <b>Problem → Improvement → Limitation</b> 순으로 분해합니다.</p>
+    <div class="chips">
+      <span class="chip"><b>1</b> 지형</span><span class="chip"><b>2</b> 색</span><span class="chip"><b>3</b> 조명</span>
+      <span class="chip"><b>4</b> 안개</span><span class="chip"><b>5</b> 하늘</span><span class="chip"><b>6</b> 물</span>
+      <span class="chip"><b>7</b> 움직임</span><span class="chip"><b>8</b> 모프</span><span class="chip"><b>9</b> 유체</span>
+      <span class="chip"><b>10</b> 발광</span><span class="chip"><b>11</b> 톤</span><span class="chip"><b>12</b> 암석·폭포</span><span class="chip"><b>13</b> 숲</span>
     </div>
   </section>
 
-  <!-- 1 BIG PICTURE -->
+  <!-- PROBLEM: 챌린지 -->
   <section class="slide">
-    <div class="kicker">큰 그림</div>
-    <h2>먼저, 이게 어떻게 가능한가</h2>
+    <div class="sec">PROBLEM — 챌린지 & 목표</div>
+    <h2>Three.js Journey Challenge 24 — Stylized Nature 🌱</h2>
     <div class="cols">
       <div class="body">
-        <p><b>화면은 점(픽셀) 200만 개로 이뤄져 있어요.</b> 컴퓨터의 그래픽 칩(GPU)은 이 200만 개를 <b>거의 동시에</b> 계산하도록 만들어진 특수 부품입니다.</p>
-        <div class="analogy"><b>비유 —</b> 한 명이 200만 장의 색칠 공책을 칠하면 하루가 걸리지만, 200만 명이 한 장씩 동시에 칠하면 1초도 안 걸려요. GPU가 바로 그 "200만 명"입니다.</div>
-        <p>각 픽셀마다 "너는 무슨 색이 될래?"를 정하는 작은 프로그램이 도는데, 이걸 <b>셰이더(shader)</b>라고 합니다. 이 발표의 거의 모든 마법은 셰이더 안에서 일어나요.</p>
+        <p>Three.js Journey의 격월 챌린지. 이번 주제는 <b>"Stylized Nature(양식화된 자연)"</b>, 마감 <b>2026.07.01</b>.</p>
         <ul class="plain">
-          <li><b>레이어 1</b> — 진짜 3D 산 (입체 지형 + 카메라)</li>
-          <li><b>레이어 2</b> — 그 위에 덧칠하는 효과 (안개·발광)</li>
+          <li><b>목표</b> — Three.js로 만든 <b>양식화된 자연 풍경</b> (사실적이 아니라 회화적·일러스트풍)</li>
+          <li>Three.js가 메인 렌더링 라이브러리 (R3F·애니메이션 라이브러리 병행 OK)</li>
+          <li>온라인 접근 가능 · 신규 프로젝트 · 저작권/에셋 출처 준수</li>
+          <li>학생 투표로 상위 3 선정 (가시성·할인코드 등)</li>
         </ul>
+        <div class="note"><b>AI 규칙</b> — 코딩 보조(디버깅·개념설명·알고리즘)는 OK, 단 <b>코드를 이해하고 본인이 소유</b>해야 함. "바이브 코딩"(설명만 하고 AI가 다 짜기)은 ❌ → 그래서 이 발표로 <b>전 과정을 직접 이해·설명</b>합니다.</div>
+      </div>
+      <div class="body">
+        <h3>우리의 접근</h3>
+        <p>한국 채색화·민화풍 초록 산수에서 영감 → <b>3D 지형 위에 절차적 숲</b>을 입힌 양식화된 자연.</p>
+        <ul class="plain">
+          <li>사실적 나무 모델 ✕ → <b>셰이더로 절차적</b> 숲·암석·폭포 (이미지 거의 0장)</li>
+          <li>입체 3D는 유지하되 <b>회화적 평면감</b> (제한 팔레트 · 도장 같은 나무)</li>
+          <li>메뉴 클릭으로 산이 <b>모프</b>하며 분위기 전환</li>
+        </ul>
+        <div class="note">출처: 원본 사이트(glenncatteeuw.com) 기법 분석에서 출발 → Stylized Nature 주제에 맞게 숲으로 변주.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 여정 -->
+  <section class="slide">
+    <div class="sec">PROBLEM — 배경 & 여정</div>
+    <h2>이 프로젝트의 여정</h2>
+    <div class="cols">
+      <div class="body">
+        <p>한 레퍼런스 사이트(glenncatteeuw.com)의 <b>안개 낀 3D 산 배경</b>을 분석·복제하는 데서 시작해, 점점 <b>한국 채색화(민화)풍 숲 풍경</b>으로 발전시킨 작업입니다.</p>
+        <ul class="plain">
+          <li><b>① 분석</b> — 원본 사이트의 minified 코드(bundle.js)를 디컴파일해 기법·실제 설정값 추출</li>
+          <li><b>② 복제</b> — Three.js로 높이맵 지형 + 유체 + 후처리 재현</li>
+          <li><b>③ 정밀화</b> — 원본 실데이터(프리셋·카메라·물높이)로 맞춤</li>
+          <li><b>④ 변주</b> — 표면을 절차적 <b>숲</b>으로, <b>암석·폭포·물</b> 추가 → 채색화 세계관</li>
+        </ul>
+        <div class="note">핵심 자산: 4종 높이맵(.jpg) + 1종 흑백 텍스처. 나머지 디테일(나무·바위·폭포)은 전부 <b>셰이더로 절차적 생성</b> — 이미지를 거의 안 씀.</div>
       </div>
       <div class="visual">
-        <img src="captures/replica_default.png" alt="완성된 배경">
-        <span class="cap">// 우리가 복제한 최종 결과 — 이걸 12겹으로 분해합니다</span>
-        <div class="code"><div class="ttl">셰이더 = 픽셀마다 도는 함수</div>
-<pre><span class="k">void</span> main() {           <span class="c">// 픽셀 1개마다 실행, 200만번 동시에</span>
-  gl_FragColor = <span class="v">색깔</span>;  <span class="c">// "나는 이 색이야"</span>
+        <img src="captures/deck/forest_full.png" alt="현재 숲 결과">
+        <span class="cap">// 현재 결과 — 절차적 숲으로 덮인 3D 산</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 어떻게 가능 -->
+  <section class="slide">
+    <div class="sec">IMPROVEMENT — 큰 그림</div>
+    <h2>먼저, 이게 어떻게 실시간으로 가능한가</h2>
+    <div class="cols">
+      <div class="body">
+        <p>화면은 픽셀 <b>약 200만 개</b>. 지형 메시는 정점(vertex) <b>약 14.8만 개</b>. 이걸 초당 60번 다시 계산하는 건 CPU로는 불가능해요.</p>
+        <p><b>GPU(그래픽 칩)</b>는 이 수백만 개를 <b>동시에 병렬로</b> 처리하도록 만들어진 하드웨어입니다. 각 점/픽셀마다 작은 프로그램(<b>셰이더</b>)이 한 번씩 돌아요.</p>
+        <div class="analogy"><b>비유 —</b> 한 명이 200만 장을 칠하면 하루, 200만 명이 한 장씩 동시에 칠하면 1초. GPU가 그 "200만 명"입니다.</div>
+        <p>그래서 이 발표의 거의 모든 마법은 <b>셰이더(GLSL)</b> 안에서 벌어집니다.</p>
+      </div>
+      <div class="visual">
+        <div class="code"><div class="ttl">Fragment shader — 픽셀 1개당 실행</div>
+<pre><span class="k">void</span> main() {            <span class="c">// 200만번 동시에</span>
+  gl_FragColor = <span class="v">색</span>;   <span class="c">// "나는 이 색"</span>
+}</pre></div>
+        <div class="code"><div class="ttl">Vertex shader — 정점 1개당 실행</div>
+<pre><span class="k">void</span> main() {              <span class="c">// 14.8만번 동시에</span>
+  pos.z += <span class="v">높이</span>;          <span class="c">// "나는 여기로"</span>
+  gl_Position = 투영(pos);
 }</pre></div>
       </div>
     </div>
   </section>
 
-  <!-- 2 LAYER 01 TERRAIN -->
+  <!-- 3 13레이어 -->
   <section class="slide">
-    <span class="tag">STEP 01 · 지형</span>
-    <h2>평평한 판을 산으로 — 변위(Displacement)</h2>
+    <div class="sec">IMPROVEMENT — 큰 그림</div>
+    <h2>화면은 13겹을 쌓아 만든다 (BUILD STACK)</h2>
     <div class="cols">
       <div class="body">
-        <p><b>핵심 발상: 텍스처(이미지)는 그림이 아니라 "숫자표"다.</b> 흑백 이미지의 밝기를 "높이"로 해석합니다. 흰색=높음, 검정=낮음.</p>
-        <p>잘게 쪼갠 평평한 판의 각 점을, 그 위치의 이미지 밝기만큼 <b>위로 밀어올리면</b> → 산맥이 됩니다.</p>
-        <div class="analogy"><b>비유 —</b> 핀아트 장난감(손을 대면 핀이 솟는 것)과 같아요. 이미지가 "어디를 얼마나 밀지"를 알려주는 거푸집입니다.</div>
+        <p>실제 앱에는 우상단 패널이 있어, 이 13개 레이어를 <b>한 겹씩 켜고 끄며</b> 어떻게 쌓이는지 볼 수 있어요. 빈 지형에서 시작해 한 줄씩 더해집니다.</p>
+        <table class="layers">
+          <tr><td>1</td><td><b>Terrain</b> 높이맵으로 산 (정점 변위)</td></tr>
+          <tr><td>2</td><td><b>Color grade</b> 표면 기본색</td></tr>
+          <tr><td>3</td><td><b>Lighting</b> 빛/그림자 → 입체</td></tr>
+          <tr><td>4</td><td><b>Fog</b> 거리 안개 → 깊이</td></tr>
+          <tr><td>5–6</td><td><b>Sky / Water</b> 하늘 돔 · 반사 물</td></tr>
+          <tr><td>7–8</td><td><b>Living motion / Click morph</b> 미세움직임 · 메뉴전환</td></tr>
+          <tr><td>9</td><td><b>Fluid mist</b> 마우스 유체 안개</td></tr>
+          <tr><td>10–11</td><td><b>Bloom / Tonemap</b> 발광 · 색보정</td></tr>
+          <tr><td>12–13</td><td><b>Rock·Waterfall / Forest</b> 암석·폭포 · 숲</td></tr>
+        </table>
+      </div>
+      <div class="visual">
+        <img src="captures/deck/bare_terrain.png" alt="레이어1 지형만">
+        <span class="cap">// RESET → "01 Terrain"만: 회색 무지 지형 (맨 바닥)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 파일/데이터흐름 -->
+  <section class="slide">
+    <div class="sec">IMPROVEMENT — 큰 그림</div>
+    <h2>파일 구조 & 데이터 흐름</h2>
+    <div class="cols solo">
+      <div class="flow"><b>src/</b>
+  main.js      ← 진입점: 렌더러·카메라·루프·패널, 모든 모듈 조립
+  <b>Terrain.js</b>   ← 산 (높이맵 변위 + 숲/암석/폭포/조명/안개)   ★ 셰이더의 심장
+  Sky.js       ← 하늘 그라데이션 돔
+  Water.js     ← 물 (지형 높이 읽어 해안선·반사·잔물결)
+  Fluid.js     ← GPU 유체 시뮬 (마우스 안개)
+  Post.js      ← 후처리: 유체 합성 + 블룸 + 출력
+  projects.js  ← 데이터: 프로젝트 11개 프리셋 (원본 bundle에서 추출)
+  ui.js        ← 메뉴 리스트 · 클릭 · 로더      panel.js ← 13겹 토글 패널
+
+데이터 흐름:
+  높이맵·텍스처 ─▶ <b>Terrain</b>(정점 변위 + 표면 셰이더) ─┐
+                                Sky · Water ─────┤─▶ RenderPass(텍스처로 렌더)
+  마우스 ─▶ <b>Fluid</b>(유체) ─▶ dye/velocity ──────────┘        │
+                                                          ▼
+                              Composite(유체 덧칠) ▶ Bloom ▶ Tonemap ▶ <b>화면</b>
+  메뉴 클릭 ─▶ applyPreset() ─▶ GSAP이 uniforms를 1.6초 트윈 ─▶ 다음 프레임부터 산·색 변함</div>
+    </div>
+  </section>
+
+  <!-- 5 한 프레임 -->
+  <section class="slide">
+    <div class="sec">IMPROVEMENT — 큰 그림</div>
+    <h2>한 프레임(1/60초)에 일어나는 일</h2>
+    <div class="cols">
+      <div class="body">
+        <p><code>main.js</code>의 <code>frame()</code> 루프가 매 프레임 반복:</p>
+        <div class="code"><div class="ttl">main.js — frame()</div>
+<pre><span class="k">function</span> frame(time) {
+  requestAnimationFrame(frame);
+  <span class="v">fluid</span>.update(dt);     <span class="c">// 1. 유체 물리 1스텝</span>
+  <span class="v">terrain</span>.update(t);    <span class="c">// 2. uTime 갱신(움직임용)</span>
+  <span class="v">water</span>.update(t, cam); <span class="c">// 3. 물 시간/카메라</span>
+  controls.update();      <span class="c">// 4. 카메라</span>
+  <span class="v">post</span>.render();        <span class="c">// 5. 씬→합성→블룸→화면</span>
+}</pre></div>
+        <ul class="plain">
+          <li><b>메뉴 전환</b>은 루프 밖에서 — 클릭 시 GSAP이 uniform을 천천히 트윈</li>
+          <li>루프는 그저 매 프레임 <b>"현재 uniform 값"</b>으로 다시 그릴 뿐</li>
+        </ul>
+      </div>
+      <div class="visual">
+        <img src="captures/deck/step_lit.png" alt="지형+색+조명+안개">
+        <span class="cap">// 지형 + 색 + 조명 + 안개까지 켠 상태 (NEXT ×3)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 기반: 텍스처 -->
+  <section class="slide">
+    <div class="sec">IMPROVEMENT — 기반 개념</div>
+    <h2>텍스처는 "그림"이 아니라 "숫자 격자"</h2>
+    <div class="cols">
+      <div class="body">
+        <p>GPU에게 텍스처는 픽셀마다 숫자 4개(RGBA)가 든 2D 표일 뿐. <b>색으로 안 읽고 다른 의미로 써도 됩니다.</b></p>
+        <ul class="plain">
+          <li><b>높이맵</b>: 밝기 = 높이. 흰색=높음, 검정=평지. → 산의 능선</li>
+          <li><b>흑백 표면맵</b>: 명암 디테일</li>
+          <li><b>속도장(유체)</b>: R,G = 흐름 방향 (색 아님)</li>
+        </ul>
+        <div class="code"><div class="ttl">Terrain.js — 높이맵 읽기</div>
+<pre><span class="v">float</span> h = texture2D(높이맵, uv).<span class="n">r</span>;  <span class="c">// 밝기 0~1</span>
+pos.z += h * 산높이;             <span class="c">// 그만큼 위로</span></pre></div>
+        <div class="note">우리 높이맵 4종: landscape-disp · vertex-map · terrain005 · landscape4k (원본이 실제로 쓰는 것들)</div>
+      </div>
+      <div class="visual">
         <div class="demo">
           <canvas id="cv-disp"></canvas>
-          <div class="row"><label>변위 스케일</label><input id="sl-disp" type="range" min="0" max="100" value="0"><span class="val" id="v-disp">0</span></div>
-          <div class="hint">슬라이더를 올리면 위 흑백 띠(높이맵)가 아래에서 산으로 솟아오릅니다. 밝은 곳일수록 높이 올라가죠.</div>
+          <div class="row"><label>산 높이</label><input id="sl-disp" type="range" min="0" max="100" value="0"><span class="val" id="v-disp">0</span></div>
+          <div class="hint">슬라이더를 올리면 위 흑백 띠(높이맵)의 밝기대로 아래가 산으로 솟아오릅니다. = 정점 변위(vertex displacement).</div>
         </div>
-      </div>
-      <div class="visual">
-        <img src="captures/steps/step_00_reset.png" alt="맨 지형">
-        <span class="cap">// 색·조명 끄고 본 '날것의 지형' — 형태만</span>
-        <div class="code"><div class="ttl">버텍스 셰이더 (점의 위치를 옮김)</div>
-<pre><span class="v">float</span> 높이 = texture(높이맵, 위치).r;  <span class="c">// 이미지 밝기 0~1</span>
-점.z += 높이 * <span class="n">108.0</span>;            <span class="c">// 그만큼 위로</span></pre></div>
       </div>
     </div>
   </section>
 
-  <!-- 3 LAYER 02 COLOR -->
+  <!-- 7 LAYER 1 지형 -->
   <section class="slide">
-    <span class="tag">STEP 02 · 색</span>
-    <h2>높이에 따라 색칠하기 — 컬러맵</h2>
+    <span class="tag">LAYER 1 · 지형</span>
+    <h2>평면을 산으로 — 변위 + 두 산 블렌드</h2>
     <div class="cols">
       <div class="body">
-        <p>이제 산이 회색 덩어리니까 색을 입힙니다. <b>색은 사진에서 그대로 가져오지 않아요.</b> 그러면 알록달록 부자연스럽거든요.</p>
-        <p>대신 <b>높이에 따라</b> 두 색 사이를 부드럽게 섞습니다 — 낮은 계곡은 어둡게, 높은 능선은 밝게.</p>
-        <div class="analogy"><b>비유 —</b> 물감 두 개(계곡색·능선색)를 높이라는 비율로 섞는 것. 0%면 계곡색, 100%면 능선색, 중간이면 반반.</div>
-        <div class="demo">
-          <canvas id="cv-cmap"></canvas>
-          <div class="row"><label>분위기(무드)</label><input id="sl-cmap" type="range" min="0" max="100" value="0"><span class="val" id="v-cmap">mist</span></div>
-          <div class="hint">슬라이더를 옮기면 같은 산이 회색→주황→보라로 "분위기"가 바뀝니다. 실제 사이트에서 글씨에 마우스를 올리면 일어나는 일이에요.</div>
-        </div>
+        <p>세분화된 평면(800×1200, 정점 14.8만)의 각 정점을 높이맵 밝기만큼 밀어올립니다. 그리고 산을 <b>모프</b>하려고 항상 <b>두 지형(A·B)을 섞어</b> 둡니다.</p>
+        <div class="code"><div class="ttl">Terrain.js (vertex)</div>
+<pre><span class="c">// 두 개의 완성된 지형을 uMorph로 섞음</span>
+<span class="k">float</span> worldH(uv) {
+  <span class="k">return</span> mix(
+    bh(uv, alphaA, offA) * 높이A,   <span class="c">// 출발 산</span>
+    bh(uv, alphaB, offB) * 높이B,   <span class="c">// 도착 산</span>
+    uMorph);                        <span class="c">// 0→1</span>
+}
+pos.z += worldH(uv);</pre></div>
+        <div class="note">핵심: offset을 연속으로 밀면 텍스처가 "미끄러져" 보임 → 대신 두 상태를 <b>cross-fade</b> 하면 봉우리가 제자리에서 솟고 꺼지며 모프 (LAYER 8에서 자세히).</div>
       </div>
       <div class="visual">
-        <img src="captures/steps/step_01_Colorgrade.png" alt="색 입힌 지형">
-        <span class="cap">// 높이 기반 색 적용 — 아직 납작함(조명 전)</span>
-        <div class="code"><div class="ttl">프래그먼트 셰이더 (픽셀 색 결정)</div>
-<pre><span class="v">색</span> = mix(<span class="v">계곡색</span>, <span class="v">능선색</span>, 높이);  <span class="c">// 높이로 섞기</span></pre></div>
+        <img src="captures/deck/bare_terrain.png" alt="변위 지형">
+        <span class="cap">// 변위만 (색·조명 OFF) — 형태만 보면 진짜 3D 산</span>
       </div>
     </div>
   </section>
 
-  <!-- 4 LAYER 03 LIGHTING -->
+  <!-- 8 LAYER 3 조명 -->
   <section class="slide">
-    <span class="tag">STEP 03 · 조명</span>
+    <span class="tag">LAYER 3 · 조명</span>
     <h2>빛과 그림자로 입체감 — 법선 조명</h2>
-    <div class="cols">
+    <div class="cols demo-r">
       <div class="body">
-        <p>지금까지는 높이로 색만 칠해서 <b>납작</b>했어요. 진짜 산처럼 보이게 하는 비밀이 이겁니다.</p>
-        <p>각 지점이 어느 방향을 향하는지(<b>법선</b>)를 계산하고, <b>햇빛 방향과 비교</b>합니다. 햇빛을 마주 본 면은 밝게, 반대 면은 어둡게.</p>
-        <div class="analogy"><b>비유 —</b> 손전등을 울퉁불퉁한 벽에 비추면, 빛을 향한 면은 환하고 그늘진 면은 어둡죠. 그 명암이 '입체'로 보이게 합니다.</div>
+        <p>높이만으론 납작해요. 각 점이 <b>어느 방향을 향하는지(법선)</b>를 이웃 높이차로 구하고, <b>햇빛 방향과 비교</b>해 밝기를 정합니다.</p>
+        <div class="code"><div class="ttl">Terrain.js (fragment)</div>
+<pre><span class="k">float</span> diff = dot(법선, 햇빛방향);
+<span class="c">// 정면=1(밝음), 직각=0(그림자)</span>
+col = albedo * (<span class="n">0.25</span> + <span class="n">0.8</span>*diff);</pre></div>
+        <p>법선은 버텍스에서 <b>높이 기울기</b>로 계산:</p>
+        <div class="code"><div class="ttl">Terrain.js (vertex)</div>
+<pre>hX = worldH(uv + 오른쪽);
+hY = worldH(uv + 위쪽);
+vNormal = normalize(vec3(
+  -(hX-h)/dx, <span class="n">1.0</span>, -(hY-h)/dy));</pre></div>
+      </div>
+      <div class="visual">
+        <div class="demo">
+          <canvas id="cv-light"></canvas>
+          <div class="row"><label>햇빛 각도</label><input id="sl-light" type="range" min="0" max="180" value="55"><span class="val" id="v-light">55°</span></div>
+          <div class="hint">햇빛 방향을 돌리면 같은 언덕의 밝은 면/그늘이 바뀝니다. 이 명암이 우리 눈에 "3D"로 읽혀요.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 LAYER 13 숲 -->
+  <section class="slide">
+    <span class="tag">LAYER 13 · 숲</span>
+    <h2>표면을 숲으로 — Voronoi 나무 도장</h2>
+    <div class="cols demo-r">
+      <div class="body">
+        <p>나무를 <b>물체로 심지 않고</b>(InstancedMesh ✕), 표면 프래그먼트에서 <b>절차적으로 그립니다</b>. UV를 격자로 나눠 각 칸에 점을 찍는 <b>Voronoi</b>로 둥근 나무 도장을 만들어요.</p>
+        <div class="code"><div class="ttl">Terrain.js — voronoi 나무</div>
+<pre>vec2 fuv = vUv * <span class="n">240.0</span>;   <span class="c">// 칸 밀도</span>
+<span class="c">// 가장 가까운 셀까지 거리 md</span>
+<span class="k">for</span> (y=-1..1) <span class="k">for</span> (x=-1..1) {
+  점 = hash(셀+이웃);
+  md = min(md, 거리²);
+}
+<span class="k">float</span> dab = smoothstep(sz,*, sqrt(md)); <span class="c">// 둥근 나무</span></pre></div>
         <ul class="plain">
-          <li>면이 햇빛을 정면으로 → 밝음</li>
-          <li>면이 햇빛에 등 돌림 → 그림자</li>
-          <li>이 명암 차이 = 우리 눈이 "3D"로 읽는 정보</li>
+          <li>나무마다 <b>랜덤 크기·초록·밝기</b> + 드물게 <b style="color:var(--pink)">벚꽃 핑크</b>·노랑</li>
+          <li>색은 <b>높이로 그라데이션</b>(계곡 진초록 → 능선 연두)</li>
         </ul>
       </div>
       <div class="visual">
-        <img src="captures/steps/step_02_Lighting.png" alt="조명 적용">
-        <span class="cap">// 조명 ON — 갑자기 진짜 바위산이 됨</span>
-        <div class="code"><div class="ttl">빛의 양 = 면방향 · 햇빛방향</div>
-<pre><span class="v">float</span> 밝기 = dot(<span class="v">면방향</span>, <span class="v">햇빛방향</span>);
-<span class="c">// 두 방향이 일치할수록 1(밝음), 반대면 0(그림자)</span>
-색 = 색 * (<span class="n">0.5</span> + <span class="n">0.5</span> * 밝기);</pre></div>
+        <div class="demo">
+          <canvas id="cv-voro"></canvas>
+          <div class="row"><label>나무 밀도</label><input id="sl-voro" type="range" min="6" max="40" value="20"><span class="val" id="v-voro">20</span></div>
+          <div class="hint">Voronoi 셀마다 둥근 나무 도장 하나. 밀도를 올리면 작고 촘촘한 숲이 됩니다. (실제 셰이더와 같은 원리)</div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- 5 LAYER 04 FOG -->
+  <!-- 10 숲: 형태 유지 -->
   <section class="slide">
-    <span class="tag">STEP 04 · 안개</span>
-    <h2>멀수록 뿌옇게 — 대기 원근(안개)</h2>
+    <span class="tag">LAYER 13 · 숲</span>
+    <h2>숲이 "평면 만화"가 되지 않으려면</h2>
     <div class="cols">
       <div class="body">
-        <p>실제로 멀리 있는 산은 공기층 때문에 흐릿하고 옅게 보입니다. 이걸 흉내 내요.</p>
-        <p>카메라에서 <b>멀어질수록</b> 그 픽셀의 색을 <b>안개색 쪽으로 섞습니다.</b> 가까운 산은 또렷, 먼 산은 하늘로 녹아듦.</p>
-        <div class="analogy"><b>비유 —</b> 멀리 있는 산일수록 뿌연 유리를 한 겹씩 더 끼우는 것. 거리만큼 흐려집니다.</div>
-        <p class="note">이 한 가지가 장면 전체의 "몽환적·공기감"을 책임집니다. 안개가 없으면 그냥 딱딱한 3D 모델처럼 보여요.</p>
-      </div>
-      <div class="visual">
-        <img src="captures/steps/step_03_Fog.png" alt="안개 적용">
-        <span class="cap">// 먼 능선이 헤이즈로 사라지며 깊이감 생김</span>
-        <div class="code"><div class="ttl">거리에 비례해 안개색과 섞기</div>
-<pre><span class="v">float</span> 거리 = 카메라에서_이_점까지;
-<span class="v">float</span> 안개량 = smoothstep(<span class="n">560.0</span>, <span class="n">1450.0</span>, 거리);
-색 = mix(색, <span class="v">안개색</span>, 안개량);  <span class="c">// 멀수록 안개색</span></pre></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 6 LAYER 05 SKY -->
-  <section class="slide">
-    <span class="tag">STEP 05 · 하늘</span>
-    <h2>배경 하늘 — 그라데이션 돔</h2>
-    <div class="cols">
-      <div class="body">
-        <p>장면 전체를 감싸는 거대한 <b>공(球) 안쪽</b>에 하늘색 그라데이션을 칠합니다. 카메라는 그 공 안에 있죠.</p>
-        <p>위(천정)는 진한 하늘색, 지평선 근처는 밝은 헤이즈 — 그래서 산이 밝은 지평선을 배경으로 실루엣이 됩니다.</p>
-        <div class="analogy"><b>비유 —</b> 천장이 하늘로 칠해진 돔 영화관 안에 들어와 있는 것. 어딜 봐도 하늘이 배경에 깔려요.</div>
-        <p class="note">안개색과 지평선 하늘색을 같게 맞춰서, 산이 하늘로 자연스럽게 녹아들게 했습니다.</p>
-      </div>
-      <div class="visual">
-        <img src="captures/steps/step_04_Sky.png" alt="하늘 적용">
-        <span class="cap">// 하늘 추가 — 산이 하늘을 배경으로 떠오름</span>
-        <div class="code"><div class="ttl">바라보는 높이로 하늘색 결정</div>
-<pre><span class="v">float</span> 위쪽정도 = 보는방향.y;        <span class="c">// -1(아래)~+1(위)</span>
-하늘색 = mix(<span class="v">지평선색</span>, <span class="v">천정색</span>, 위쪽정도);</pre></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 7 LAYER 06 WATER -->
-  <section class="slide">
-    <span class="tag">STEP 06 · 물</span>
-    <h2>계곡에 흐르는 물 — 반사 + 해안선</h2>
-    <div class="cols">
-      <div class="body">
-        <p>물 평면을 일정 높이에 깔되, <b>그 아래 산의 높이를 읽어서</b> 산보다 낮은 곳에만 물이 보이게 합니다. 그래서 해안선이 산을 따라 구불구불해져요(딱딱한 직선이 아니라).</p>
+        <p>나무 도장이 <b>제각각 고대비</b>면, 그 노이즈가 산의 큰 명암(3D 형태)을 덮어 평평하게 보여요. 그래서:</p>
         <ul class="plain">
-          <li><b>해안선</b> — 물이 산 높이를 읽어 얕은 곳엔 거품</li>
-          <li><b>반사</b> — 비스듬히 볼수록 하늘을 비춤(프레넬)</li>
-          <li><b>잔물결</b> — 무늬를 어긋나게 두 번 흘려 끝없이 일렁</li>
+          <li>나무는 <b>은은한 질감</b>만 (틈도 새까맣지 않게, 부드러운 가장자리)</li>
+          <li>큰 색은 <b>높이(형태)</b> 가 주도 → 그 위에 강한 <b>조명</b></li>
+          <li>결과: 숲을 켜도 산의 <b>입체감 유지</b></li>
         </ul>
-        <div class="analogy"><b>비유 —</b> 욕조에 물을 받으면 높은 바위는 섬처럼 남고 낮은 곳만 잠기죠. 물이 지형 높이를 "읽어서" 그렇게 채웁니다.</div>
+        <div class="code"><div class="ttl">Terrain.js</div>
+<pre><span class="c">// 형태가 주도하는 초록 베이스</span>
+baseGreen = mix(진초록, 연두, 높이);
+forest = baseGreen * (<span class="n">0.74</span>+dab*..) * 랜덤밝기;
+<span class="c">// 그 위에 강한 빛/그림자</span>
+lit = forest * (<span class="n">0.25</span> + <span class="n">0.8</span>*diff);</pre></div>
       </div>
       <div class="visual">
-        <img src="captures/steps/step_05_Water.png" alt="물 적용">
-        <span class="cap">// 물 추가 — 계곡에 물, 봉우리는 섬처럼 솟음</span>
-        <div class="code"><div class="ttl">수심 = 물높이 − 그 아래 지형높이</div>
-<pre><span class="v">float</span> 수심 = 물높이 - 지형높이;
-<span class="k">if</span> (수심 &lt; <span class="n">0.0</span>) discard;   <span class="c">// 산이 더 높음 → 물 안그림(땅)</span>
-거품 = (수심이 얕을수록 ↑);  <span class="c">// 해안선 거품</span></pre></div>
+        <img src="captures/deck/forest_full.png" alt="입체감 있는 숲">
+        <span class="cap">// 조명이 형태를 이끌어 숲을 켜도 3D 산</span>
       </div>
     </div>
   </section>
 
-  <!-- 8 LAYER 07 LIVING + 08 MORPH -->
+  <!-- 11 LAYER 12 암석·폭포 -->
   <section class="slide">
-    <span class="tag">STEP 07·08 · 움직임 & 모핑</span>
-    <h2>살아있게 + 산이 다른 산으로 변신</h2>
+    <span class="tag">LAYER 12 · 암석 · 폭포</span>
+    <h2>경사로 암석, 골짜기로 폭포 — 자동 배치</h2>
     <div class="cols">
       <div class="body">
-        <p><b>07 미세 움직임 —</b> 시간에 따라 흐르는 노이즈를 아주 살짝 더해 표면이 천천히 숨 쉬듯 일렁이게.</p>
-        <p><b>08 모핑 —</b> 산은 여러 높이맵을 미리 준비해두고, 글씨에 마우스를 올리면 <b>두 높이맵 사이를 천천히 섞습니다.</b> 그러면 봉우리들이 새 위치로 기어가며 다른 산이 됩니다.</p>
+        <h3>암석 = 가파른 곳</h3>
+        <div class="code"><div class="ttl">경사 = 1 − 법선.y</div>
+<pre><span class="k">float</span> slope = <span class="n">1.0</span> - n.y;          <span class="c">// 0평지 1수직</span>
+<span class="k">float</span> steep = smoothstep(.4,.54,slope);
+색 = mix(숲, <span class="v">바위색</span>, steep);   <span class="c">// 절벽엔 바위</span>
+나무 *= <span class="n">1.0</span> - steep;            <span class="c">// 나무는 피해서</span></pre></div>
+        <h3>폭포 = 오목한 골짜기</h3>
+        <div class="code"><div class="ttl">곡률(Laplacian)로 골 찾기</div>
+<pre><span class="c">// 이웃합-4*중심 &gt;0 = 오목(골)</span>
+vConcavity = hX+hXn+hY+hYn - <span class="n">4.0</span>*h;
+<span class="k">float</span> valley = smoothstep(.15,1., vConcavity);
+폭포 = valley * steep * 세로줄기 * 흐름;</pre></div>
+      </div>
+      <div class="body">
+        <ul class="plain">
+          <li><b>나무가 암석을 피함</b> — 같은 경사 마스크(steepM)로 절벽엔 나무 제거 → 바위가 깔끔히 드러남</li>
+          <li><b>폭포는 오목한 골에만</b> — 곡률(Laplacian)이 양수인 채널 + 가파름 + 세로 줄기</li>
+          <li><b>중력 방향으로 흐름</b> — 높이(vHeight) 따라 아래로 애니메이션, 파란 물색</li>
+          <li>조명 <b>뒤에</b> 덧칠 → 절벽 그늘에서도 폭포가 밝게 보임</li>
+        </ul>
+        <div class="note">전부 <b>지형의 기하(경사·곡률)에서 자동 유도</b> — 위치를 손으로 안 찍었어요.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12 LAYER 4 안개 -->
+  <section class="slide">
+    <span class="tag">LAYER 4 · 안개</span>
+    <h2>멀수록 옅게 — 대기 원근 (깊이감)</h2>
+    <div class="cols demo-r">
+      <div class="body">
+        <p>카메라에서 멀어질수록 그 픽셀을 <b>안개색 쪽으로 섞습니다.</b> 겹친 산이 뒤로 갈수록 흐려져 <b>깊이</b>가 생겨요.</p>
+        <div class="code"><div class="ttl">Terrain.js</div>
+<pre><span class="k">float</span> d = 카메라거리(vViewZ);
+<span class="k">float</span> fog = smoothstep(<span class="n">560</span>, <span class="n">1450</span>, d);
+col = mix(col, <span class="v">안개색</span>, fog);</pre></div>
+        <p>안개색은 <b>메뉴마다</b> 그 프로젝트 색으로 부드럽게 트윈 (하늘·물·배경과 함께).</p>
+        <div class="analogy"><b>비유 —</b> 멀리 있는 산일수록 뿌연 유리를 한 겹씩 더 끼우는 것.</div>
+      </div>
+      <div class="visual">
+        <div class="demo">
+          <canvas id="cv-fog"></canvas>
+          <div class="row"><label>안개 농도</label><input id="sl-fog" type="range" min="0" max="100" value="55"><span class="val" id="v-fog">55</span></div>
+          <div class="hint">겹친 산맥. 안개를 올리면 먼 봉우리가 옅어지며 깊이감이 살아납니다.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 LAYER 5,6 하늘·물 -->
+  <section class="slide">
+    <span class="tag">LAYER 5–6 · 하늘 · 물</span>
+    <h2>하늘 돔 + 지형을 읽는 물</h2>
+    <div class="cols">
+      <div class="body">
+        <h3>하늘 (Sky.js)</h3>
+        <p>장면을 감싼 큰 구 <b>안쪽</b>에 그라데이션 — 천정→지평선 색을 바라보는 높이로 섞음. 메뉴 따라 색 변함.</p>
+        <h3>물 (Water.js)</h3>
+        <div class="code"><div class="ttl">물이 지형 높이를 읽어 해안선</div>
+<pre><span class="k">float</span> 수심 = 물높이 - 지형높이;
+<span class="k">if</span> (수심 &lt; <span class="n">0.</span>) discard;   <span class="c">// 산이 높음→물X(땅)</span>
+거품 = (얕을수록);          <span class="c">// 해안선</span>
+프레넬 = pow(1-dot(법선,시선),3); <span class="c">// 비스듬→하늘반사</span></pre></div>
+        <ul class="plain">
+          <li><b>해수면 높이</b>는 원본(bundle) 비율 참고 — 산 높이의 약 55%, 봉우리가 섬처럼</li>
+          <li>같은 변위 uniform을 공유 → 산이 모프하면 <b>해안선도 같이</b></li>
+        </ul>
+      </div>
+      <div class="visual">
+        <img src="captures/deck/step_lit.png" alt="하늘·안개">
+        <span class="cap">// 하늘 돔 + 안개로 깊이가 생긴 장면</span>
+        <div class="note" style="margin-top:4px">z-fighting(물·지형 경계 깜빡임)은 물에 polygonOffset + 미세움직임 약화로 해결.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14 LAYER 8 모프 -->
+  <section class="slide">
+    <span class="tag">LAYER 8 · 클릭 모프</span>
+    <h2>메뉴 클릭 → 다른 산으로 (미끄러짐 없이)</h2>
+    <div class="cols demo-r">
+      <div class="body">
+        <p>메뉴를 <b>클릭</b>하면 그 프로젝트 산으로 전환, 다음 클릭 전까지 유지. 핵심은 <b>"두 상태 cross-fade"</b>로 미끄러짐을 없앤 것.</p>
+        <div class="code"><div class="ttl">main.js — applyPreset</div>
+<pre><span class="c">// 현재 B를 A로 스냅샷, 새 프리셋을 B로</span>
+A = B;  B = 새프리셋;
+uMorph = 0;
+gsap.to(uMorph, {value:<span class="n">1</span>, duration:<span class="n">1.6</span>});</pre></div>
+        <p>두 개의 <b>완성된 지형</b>을 높이만 보간 → 봉우리가 <b>제자리에서</b> 솟고 꺼짐 (UV를 밀면 텍스처가 옆으로 흐르는 "슬라이딩"이 안 생김).</p>
+      </div>
+      <div class="visual">
         <div class="demo">
           <canvas id="cv-morph"></canvas>
-          <div class="row"><label>산 A → 산 B</label><input id="sl-morph" type="range" min="0" max="100" value="0"><span class="val" id="v-morph">0%</span></div>
-          <div class="hint">슬라이더를 끌면 산 A가 산 B로 부드럽게 변형됩니다. 봉우리가 갈아끼워지는 게 아니라 "이동"하는 게 핵심.</div>
+          <div class="row"><label>산 A → B</label><input id="sl-morph" type="range" min="0" max="100" value="0"><span class="val" id="v-morph">0%</span></div>
+          <div class="hint">두 산을 비율로 섞기. 슬라이더를 끌면 봉우리가 갈아끼워지는 게 아니라 "이동"합니다 = 제자리 모프.</div>
         </div>
-      </div>
-      <div class="visual">
-        <img src="captures/replica_hover.png" alt="모핑된 주황 무드">
-        <span class="cap">// 글씨 호버 → 산·색 동시에 다른 프로젝트로</span>
-        <div class="code"><div class="ttl">두 높이맵을 비율로 섞기</div>
-<pre>높이 = mix(<span class="v">산A높이</span>, <span class="v">산B높이</span>, t);
-<span class="c">// t를 0→1로 천천히 올리면(GSAP) 봉우리가 이동</span></pre></div>
       </div>
     </div>
   </section>
 
-  <!-- 9 LAYER 09 FLUID -->
+  <!-- 15 데이터 프리셋 -->
   <section class="slide">
-    <span class="tag">STEP 09 · 유체</span>
-    <h2>마우스 따라 휘몰아치는 안개 — 유체 시뮬레이션</h2>
+    <span class="tag">데이터 · 프리셋</span>
+    <h2>프로젝트별 설정은 원본에서 추출한 실데이터</h2>
     <div class="cols">
       <div class="body">
-        <p>가장 정교한 부분. 진짜 물·연기의 물리 방정식을 GPU로 매 프레임 풉니다.</p>
+        <p>원본 사이트의 minified <code>bundle.js</code>는 의외로 <b>씬 설정이 예쁘게 박혀</b> 있었어요. Python으로 11개 프로젝트의 실제 값을 파싱:</p>
+        <div class="code"><div class="ttl">projects.js — 추출한 실프리셋</div>
+<pre>{ name:<span class="s">'Victorinox'</span>, disp:<span class="n">0</span>, dispScale:<span class="n">77.2</span>,
+  dispOff:[<span class="n">.283</span>,<span class="n">.543</span>], fog:<span class="s">'#E8664B'</span>,
+  texScale:<span class="n">1.0</span>, contrast:<span class="n">2.29</span> }
+{ name:<span class="s">'Hashgraph'</span>, ..., fog:<span class="s">'#ff0891'</span> } <span class="c">// 핑크</span>
+{ name:<span class="s">'Sweetbeats'</span>, ..., fog:<span class="s">'#A04CE8'</span> } <span class="c">// 보라</span></pre></div>
         <ul class="plain">
-          <li><b>속도장</b> — 화면 곳곳의 "흐르는 방향"을 저장한 표</li>
-          <li><b>염료장</b> — 그 흐름에 풀린 "잉크(눈에 보이는 안개)"</li>
-          <li><b>마우스</b> — 커서 위치에 힘과 잉크를 주입(splat)</li>
+          <li><b>disp</b> 어떤 높이맵 · <b>dispScale</b> 산 높이 · <b>dispOff</b> 높이맵 위치</li>
+          <li><b>fog</b> 그 프로젝트의 분위기 색 (하늘·물·안개로 번짐)</li>
         </ul>
-        <div class="analogy"><b>비유 —</b> 강물(속도장)은 안 보이지만, 잉크(염료장)를 떨어뜨리면 물살을 따라 퍼지며 흐름이 보이죠. 마우스가 그 잉크를 떨어뜨리는 손가락입니다.</div>
+      </div>
+      <div class="body">
+        <h3>발견: 표면색의 정체</h3>
+        <p>원본 산 표면은 알록달록 텍스처가 아니라 <b>흑백 마블 + fog색</b>이었어요. 컬러 텍스처를 <b>채도 0으로</b> 깔고, 색은 fog에서. (그래서 안 알록달록)</p>
+        <h3>카메라도 실값</h3>
+        <div class="code"><div class="ttl">main.js</div>
+<pre>PerspectiveCamera(<span class="n">30</span>, ...);  <span class="c">// fov 30</span>
+camera.position.set(<span class="n">0</span>,<span class="n">65</span>,<span class="n">200</span>);
+camera.lookAt(<span class="n">0</span>,<span class="n">0</span>,<span class="n">0</span>);</pre></div>
+        <div class="note">물 높이도 bundle 값(<code>water.y=42.307</code>, <code>mountainHeight=54.35</code>)의 <b>비율</b>로 환산해 적용.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16 LAYER 9 유체 -->
+  <section class="slide">
+    <span class="tag">LAYER 9 · 유체</span>
+    <h2>마우스 따라 휘몰아치는 안개 — GPU 유체</h2>
+    <div class="cols">
+      <div class="body">
+        <p>가장 정교한 부분. 진짜 물·연기의 <b>Navier-Stokes 방정식</b>을 GPU로 매 프레임 풉니다 (원본 기법 이식).</p>
+        <ul class="plain">
+          <li><b>속도장</b> — 화면 곳곳의 흐름 방향을 저장한 텍스처</li>
+          <li><b>염료장</b> — 그 흐름에 풀린 잉크(보이는 안개)</li>
+          <li><b>마우스</b> — 커서에 힘·잉크 주입(splat)</li>
+        </ul>
+        <div class="code"><div class="ttl">Fluid.js — 이류(advection)</div>
+<pre><span class="c">// "이 잉크는 방금 어디서 왔나" 역추적</span>
+coord = vUv - dt * 속도 * texelSize;
+새잉크 = texture2D(염료장, coord);</pre></div>
+        <div class="note">8종 풀스크린 셰이더(splat·curl·divergence·pressure×20·advection…)를 텍스처(FBO)에 ping-pong으로 그림.</div>
+      </div>
+      <div class="visual">
         <div class="demo">
           <canvas id="cv-fluid"></canvas>
-          <div class="hint">위 칸에 마우스를 <b>문질러</b> 보세요. 커서를 따라 잉크가 번지고 흐릅니다 (실제 유체 알고리즘의 단순 버전).</div>
+          <div class="hint">위 칸에 마우스를 <b>문질러</b> 보세요 — 커서 따라 잉크가 번지고 흐릅니다. (유체의 단순 버전)</div>
         </div>
       </div>
-      <div class="visual">
-        <img src="captures/replica_hover.png" alt="유체가 덧칠된 결과">
-        <span class="cap">// 산 위에 흐르는 안개 한 겹이 더 얹힘</span>
-        <div class="code"><div class="ttl">이류(Advection): 잉크가 흐름을 따라감</div>
-<pre><span class="c">// "이 잉크는 방금 전에 어디서 흘러왔지?"를 거꾸로 추적</span>
-<span class="v">vec2</span> 출발점 = 현재위치 - 속도 * 시간;
-새_잉크색 = texture(염료장, 출발점);</pre></div>
+    </div>
+  </section>
+
+  <!-- 17 후처리 -->
+  <section class="slide">
+    <span class="tag">LAYER 9–11 · 후처리</span>
+    <h2>합성 · 발광 · 톤보정 (Post.js)</h2>
+    <div class="cols">
+      <div class="body">
+        <p>3D 씬을 화면에 곧장 안 그리고, <b>텍스처에 먼저 렌더</b>한 뒤 여러 패스를 거칩니다 (<code>EffectComposer</code>).</p>
+        <div class="flow">RenderPass  씬 → 텍스처
+   ▼
+<b>Composite</b>   유체 안개 덧칠 + 속도로 살짝 왜곡
+   ▼
+<b>Bloom</b>       밝은 부분 번지게 (은은한 발광)
+   ▼
+<b>Tonemap</b>     1.0 넘는 밝기 압축 → 흰색 폭발 방지
+   ▼
+화면</div>
+        <div class="note">"왜 하얗게 나오지?" 버그의 범인이 바로 톤매핑 누락이었어요 → ACES 톤매핑 추가로 해결.</div>
+      </div>
+      <div class="body">
+        <h3>비유</h3>
+        <div class="analogy"><b>벽에 바로 그리면</b> 수정 불가. <b>사진(텍스처)으로 먼저 찍어두면</b> 필터(안개·발광·색보정)를 입힌 뒤 벽에 거는 것 = 후처리.</div>
+        <h3>Living motion (LAYER 7)</h3>
+        <p>시간에 따라 흐르는 노이즈를 높이에 <b>아주 살짝</b> 더해 "살아있는" 느낌. (강하면 물 경계가 깜빡여서 미세하게.)</p>
+        <div class="code"><div class="ttl">Terrain.js (vertex)</div>
+<pre>anim = texture2D(높이맵, uv*1.7 + uTime*.01).r;
+h += (anim-<span class="n">.5</span>) * <span class="n">0.8</span> * uAnimOn;</pre></div>
       </div>
     </div>
   </section>
 
-  <!-- 10 LAYER 10-12 POST -->
+  <!-- 18 셰이더 심화: 프래그 전체 -->
   <section class="slide">
-    <span class="tag">STEP 10·11·12 · 마무리 후처리</span>
-    <h2>합성 · 발광 · 톤보정</h2>
-    <div class="cols">
+    <div class="sec">IMPROVEMENT — 셰이더 심화</div>
+    <h2>Terrain 프래그먼트 — 한 픽셀이 색을 정하는 전 과정</h2>
+    <div class="cols solo">
+      <div class="flow"><b>void main() {</b>            <span style="color:#5f6e54">// 이 픽셀의 최종 색을 계산</span>
+  1. <b>t</b> = 높이를 0~1로 (계곡→능선)
+  2. <b>marble</b>  = 흑백텍스처 × 무드색           <span style="color:#5f6e54">// 미스티 모드(숲 OFF)</span>
+  3. <b>forest</b>  = Voronoi 나무 도장 + 높이별 초록 + 벚꽃   <span style="color:#5f6e54">// 숲 모드</span>
+       └ slope(경사)로 절벽엔 나무 제거
+  4. <b>rock</b>    = 가파른 곳 회청색 바위 (steepM)
+  5. <b>waterfall</b> = 오목한 골(곡률) + 세로줄기 → wf 마스크 보관
+  6. <b>albedo</b>  = mix(marble, forest, <b>uForestOn</b>)        <span style="color:#5f6e54">// 13번 토글</span>
+  7. <b>lit</b>     = albedo × (0.25 + 0.8·diff)               <span style="color:#5f6e54">// 강한 빛/그림자</span>
+  8. <b>col</b>     = lit + 파란 폭포(wf)                        <span style="color:#5f6e54">// 조명 뒤 덧칠</span>
+  9. <b>col</b>     = mix(col, 안개색, fog)                      <span style="color:#5f6e54">// 대기 원근</span>
+  gl_FragColor = vec4(col, 1.0);
+<b>}</b></pre></div>
+      <p class="note" style="margin-top:14px">토글들(<b>uForestOn·uRockOn·uGradeOn·uLightOn·uFogOn</b>)은 전부 <b>0/1 uniform</b>으로 mix를 켜고 끕니다 → 패널의 13겹이 이 한 셰이더 안에서 합쳐짐.</p>
+    </div>
+  </section>
+
+  <!-- 19 색 그라데이션 데모 -->
+  <section class="slide">
+    <div class="sec">IMPROVEMENT — 셰이더 심화</div>
+    <h2>색은 "높이"가 만든다</h2>
+    <div class="cols demo-r">
       <div class="body">
-        <p>마지막으로 완성한 그림 전체에 사진 보정 같은 마무리를 입힙니다.</p>
-        <ul class="plain">
-          <li><b>10 합성</b> — 유체 안개를 산 위에 덧칠 + 흐름으로 화면 살짝 왜곡</li>
-          <li><b>11 블룸(발광)</b> — 밝은 부분을 번지게 해 몽환적 빛</li>
-          <li><b>12 톤보정</b> — 너무 밝은 값을 부드럽게 눌러 흰색 번짐 방지</li>
-        </ul>
-        <div class="analogy"><b>비유 —</b> 사진 찍고 나서 인스타 필터를 입히는 단계예요. 형태는 그대로, 분위기를 확 끌어올립니다.</div>
-        <p class="note">실제로 우리가 "왜 이렇게 하얗게 나오지?" 문제를 겪은 게 바로 이 톤보정이 빠져서였습니다.</p>
+        <p>숲의 초록도, 미스티 산의 색도 전부 <b>높이(vHeight)로 두 색을 섞어</b> 만듭니다. 계곡은 진하게, 능선은 밝게.</p>
+        <div class="code"><div class="ttl">Terrain.js</div>
+<pre><span class="k">float</span> t = smoothstep(<span class="n">0.</span>, <span class="n">.55</span>, vHeight);
+vec3 green = mix(<span class="v">진초록</span>, <span class="v">연두</span>, t);</pre></div>
+        <p>여기에 <b>거리 안개</b>까지 더하면, 가까운 골은 진한 초록 / 먼 능선은 옅은 안개초록 = <b>레퍼런스 채색화의 겹친 산</b> 느낌.</p>
       </div>
       <div class="visual">
-        <img src="captures/replica_default.png" alt="최종 합성">
-        <span class="cap">// 발광 + 톤보정까지 = 최종 화면</span>
-        <div class="code"><div class="ttl">밝은 곳만 번지게(블룸) → 톤 압축</div>
-<pre>밝은부분 = 색에서 일정 밝기 이상만;
-번짐 = 흐리게(밝은부분);          <span class="c">// 발광</span>
-최종 = 톤매핑(색 + 번짐);          <span class="c">// 흰색 폭발 방지</span></pre></div>
+        <div class="demo">
+          <canvas id="cv-ramp"></canvas>
+          <div class="row"><label>능선 밝기</label><input id="sl-ramp" type="range" min="0" max="100" value="60"><span class="val" id="v-ramp">60</span></div>
+          <div class="hint">높이에 따라 계곡(아래)→능선(위) 색이 섞입니다. 슬라이더로 능선 색을 바꿔보세요.</div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- 11 SUMMARY -->
+  <!-- 20 정리 -->
   <section class="slide">
-    <div class="kicker">정리</div>
-    <h2>12겹이 모여 하나의 살아있는 풍경</h2>
+    <div class="sec">IMPROVEMENT — 정리</div>
+    <h2>13겹이 모여 하나의 살아있는 풍경</h2>
     <div class="cols">
       <div class="body">
-        <p>마법은 없었습니다. <b>전부 "숫자를 매 프레임 GPU가 계산"</b>한 결과예요.</p>
+        <p>마법은 없었습니다. 전부 <b>"숫자를 매 프레임 GPU가 계산"</b>한 결과예요.</p>
         <ul class="plain">
-          <li>텍스처는 그림이 아니라 <b>숫자표</b> (높이·색·흐름)</li>
-          <li>셰이더가 <b>픽셀·점마다 병렬</b>로 계산</li>
-          <li>각 효과는 <b>얇은 한 겹</b>, 합쳐져서 깊이가 됨</li>
-          <li>변하는 모든 값은 <b>천천히 섞여서(보간)</b> 자연스러움</li>
+          <li>텍스처 = <b>숫자표</b> (높이·명암·흐름)</li>
+          <li>셰이더가 <b>정점·픽셀마다 병렬</b> 계산</li>
+          <li>나무·바위·폭포 = <b>이미지 없이 절차적</b> (Voronoi·경사·곡률)</li>
+          <li>각 효과는 <b>0/1 토글</b>로 합쳐지는 한 겹</li>
+          <li>변하는 값은 전부 <b>천천히 트윈</b> → 자연스러움</li>
         </ul>
-        <p class="note">왼쪽 위 BUILD STACK 패널에서 RESET → NEXT를 누르면 이 12겹을 실제로 한 겹씩 켜볼 수 있습니다.</p>
       </div>
-      <div class="visual">
-        <img src="captures/replica_vs_original.png" alt="원본 vs 복제본">
-        <span class="cap">// 위: 원본 사이트 / 아래: 우리 복제본</span>
+      <div class="body">
+        <h3>실행 / 조작</h3>
+        <div class="code"><div class="ttl">터미널</div>
+<pre>cd replica
+npm install
+npm run dev      <span class="c"># localhost:5173</span></pre></div>
+        <ul class="plain">
+          <li>입장 후 우상단 <b>BUILD STACK</b>: RESET → NEXT로 한 겹씩</li>
+          <li>왼쪽 <b>메뉴 클릭</b> → 다른 산·분위기로 전환</li>
+          <li>마우스 드래그(OrbitControls)로 카메라 회전</li>
+          <li>13·12번 토글 = 숲 / 암석·폭포 켜고 끄기</li>
+        </ul>
+        <div class="note">문서: <b>CODE_WALKTHROUGH.html</b>(라인별 정독) · 이 슬라이드(프로세스·개념)</div>
       </div>
     </div>
+  </section>
+
+  <!-- LIMITATION 1 -->
+  <section class="slide">
+    <div class="sec">LIMITATION — 한계 & 방향</div>
+    <h2>지금의 한계 — 솔직하게</h2>
+    <div class="cols">
+      <div class="body">
+        <ul class="plain">
+          <li><b>숲 모양이 너무 일률적·이상함</b> — Voronoi 나무 패턴이 반복·균일해 부자연스럽고 평면적. 군집·크기·수종 다양성, 능선 실루엣 강조가 필요</li>
+          <li><b>라이팅</b> — 단일 방향광뿐. 그림자·앰비언트 오클루전·시간대(노을/아침) 등 더 연구 필요</li>
+          <li><b>시점 이동</b> — 거의 고정. 카메라 무빙/스크롤 연출·인터랙션이 부족</li>
+          <li><b>패턴</b> — 나무·바위 배치가 절차적이라 균일. 손으로 그린 듯한 변주가 필요</li>
+        </ul>
+      </div>
+      <div class="body">
+        <ul class="plain">
+          <li><b>안개</b> — 단순 거리 페이드. 볼류메트릭 안개·God ray 연구</li>
+          <li><b>물 · 폭포</b> — 폭포가 아직 표면 텍스처라 어색. 별도 지오메트리/파티클, 물 반사·굴절 고도화 필요</li>
+          <li><b>추가 모티프</b> — 학·구름·동물 등 채색화 요소, 필름 그레인으로 질감</li>
+          <li><b>성능</b> — 정점/유체 부하 최적화</li>
+        </ul>
+        <div class="note">핵심 방향: <b>"절차적이라 균일하다"</b>는 한계를 깨는 것 — 더 풍부한 변주(노이즈·군집·수작업 느낌) + 연출(조명·카메라·물·안개)을 연구해 양식화된 자연의 완성도를 높이기.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIMITATION 2: 우선순위 -->
+  <section class="slide">
+    <div class="sec">LIMITATION — 다음 단계</div>
+    <h2>다음에 연구할 우선순위</h2>
+    <div class="cols solo">
+      <div class="flow">효과 큰 순서 (마감 2026.07.01 전):
+  1. <b>숲 패턴 다양화</b>   균일한 Voronoi → 군집·크기·수종 변주 + 능선 실루엣 → "일률적" 해결
+  2. <b>라이팅 연구</b>     그림자 / 앰비언트 오클루전 / 시간대(노을) → 입체·분위기
+  3. <b>카메라 연출</b>     고정 시점 → 스크롤/마우스 무빙 → 살아있는 탐험감
+  4. <b>물·폭포 고도화</b>  표면 텍스처 → 별도 지오메트리/파티클 + 반사·굴절
+  5. <b>안개</b>          거리 페이드 → 볼류메트릭 / God ray
+  6. <b>모티프·그레인</b>   학·구름 + 종이 질감 → 채색화 완성도
+
+핵심: 지금은 "구조는 동작하나 디테일이 거칠다" → 거친 부분을 연구로 다듬는 단계.</div>
+    </div>
+  </section>
+
+  <!-- END -->
+  <section class="slide title">
+    <div class="kicker">끝 — 감사합니다 · Stylized Nature 🌱</div>
+    <div class="big">질문?<br><em>BUILD STACK</em>을 한 겹씩<br>켜보며 설명할게요.</div>
+    <p class="lead">RESET → NEXT를 누르며 "이 겹은 무엇을 더하는가"를 실시간으로 보여주는 게 가장 강력한 데모입니다. (지형 → 조명 → 숲 → 암석·폭포 → 안개 → 하늘 → 물 → …)</p>
   </section>
 
 </div>
 
-<div class="hintkey">← → 또는 클릭으로 이동</div>
+<div class="hintkey">← → 또는 클릭 · 데모는 직접 조작</div>
 <div class="nav">
   <button id="prev">← 이전</button>
   <div class="dots" id="dots"></div>
-  <div style="display:flex;gap:16px;align-items:center">
-    <span class="counter" id="counter">1 / 12</span>
+  <div style="display:flex;gap:14px;align-items:center">
+    <span class="counter" id="counter">1 / 21</span>
     <button id="next">다음 →</button>
   </div>
 </div>
@@ -376,112 +723,105 @@
   const slides=[...document.querySelectorAll('.slide')];
   const dotsWrap=document.getElementById('dots');
   const counter=document.getElementById('counter');
+  const prog=document.getElementById('prog');
   let i=0;
-  slides.forEach((_,n)=>{const d=document.createElement('div');d.className='dot';d.onclick=()=>go(n);dotsWrap.appendChild(d);});
+  slides.forEach((s,n)=>{const d=document.createElement('div');d.className='dot'+(s.querySelector('.sec')?' sec':'');d.onclick=()=>go(n);dotsWrap.appendChild(d);});
   const dots=[...document.querySelectorAll('.dot')];
   function go(n){
     i=Math.max(0,Math.min(slides.length-1,n));
     slides.forEach((s,k)=>s.classList.toggle('active',k===i));
     dots.forEach((d,k)=>d.classList.toggle('on',k===i));
     counter.textContent=(i+1)+' / '+slides.length;
-    // canvases in a hidden slide have 0 size; re-fit+redraw now that this slide is visible
+    prog.style.width=((i+1)/slides.length*100)+'%';
     requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));
   }
   document.getElementById('next').onclick=()=>go(i+1);
   document.getElementById('prev').onclick=()=>go(i-1);
   document.addEventListener('keydown',e=>{
-    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown')go(i+1);
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ')go(i+1);
     if(e.key==='ArrowLeft'||e.key==='PageUp')go(i-1);
   });
-  // click right/left half to navigate (ignore clicks on controls/inputs)
   document.getElementById('deck').addEventListener('click',e=>{
     if(e.target.closest('input,button,canvas,a'))return;
     go(e.clientX>window.innerWidth/2?i+1:i-1);
   });
   go(0);
 
-  /* ---------- interactive demos (plain canvas, no libraries) ---------- */
-  function fit(c){const r=c.getBoundingClientRect();c.width=r.width*2;c.height=r.height*2;return c.getContext('2d');}
-  // smooth pseudo-heightfield
-  function field(n,seed){const a=[];for(let x=0;x<n;x++){a.push(
-    0.5+0.32*Math.sin(x*0.07+seed)+0.18*Math.sin(x*0.17+seed*2.3)+0.12*Math.sin(x*0.31+seed*4.1));}return a;}
+  /* ---------------- interactive demos (vanilla canvas) ---------------- */
+  function fit(c){const r=c.getBoundingClientRect();c.width=Math.max(2,r.width*2);c.height=Math.max(2,r.height*2);return c.getContext('2d');}
+  function hash(x){const s=Math.sin(x*127.1)*43758.5453;return s-Math.floor(s);}
+  function field(n,seed){const a=[];for(let x=0;x<n;x++)a.push(0.5+0.30*Math.sin(x*0.06+seed)+0.16*Math.sin(x*0.15+seed*2.1)+0.10*Math.sin(x*0.29+seed*4.3));return a;}
 
   // DEMO 1: displacement
-  (function(){
-    const c=document.getElementById('cv-disp');if(!c)return;const g=fit(c);
-    const N=180,h=field(N,1.2);const sl=document.getElementById('sl-disp'),v=document.getElementById('v-disp');
-    function draw(){
-      const W=c.width,H=c.height,s=+sl.value/100;v.textContent=sl.value;
-      g.clearRect(0,0,W,H);
-      // top strip = heightmap (grayscale)
-      for(let x=0;x<N;x++){const b=Math.floor(h[x]*255);g.fillStyle='rgb('+b+','+b+','+b+')';g.fillRect(x/N*W,0,W/N+1,H*0.22);}
-      g.fillStyle='#647082';g.font='20px monospace';g.fillText('높이맵 (밝기=높이)',12,H*0.22-12);
-      // mountain silhouette
-      g.beginPath();g.moveTo(0,H);
-      for(let x=0;x<N;x++){const y=H*0.95-(h[x]*s)*(H*0.66);g.lineTo(x/N*W,y);}
-      g.lineTo(W,H);g.closePath();
-      const grd=g.createLinearGradient(0,H*0.3,0,H);grd.addColorStop(0,'#9aa8b4');grd.addColorStop(1,'#10151a');
-      g.fillStyle=grd;g.fill();
-    }
-    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{fit(c);draw();});draw();
-  })();
+  (function(){const c=document.getElementById('cv-disp');if(!c)return;const N=190,h=field(N,1.1),sl=document.getElementById('sl-disp'),v=document.getElementById('v-disp');
+    function draw(){const g=fit(c),W=c.width,H=c.height,s=+sl.value/100;v.textContent=sl.value;g.clearRect(0,0,W,H);
+      for(let x=0;x<N;x++){const b=Math.floor(h[x]*255);g.fillStyle='rgb('+b+','+b+','+b+')';g.fillRect(x/N*W,0,W/N+1,H*0.2);}
+      g.fillStyle='#5f6e54';g.font='18px monospace';g.fillText('높이맵 (밝기=높이)',12,H*0.2-10);
+      g.beginPath();g.moveTo(0,H);for(let x=0;x<N;x++){const y=H*0.95-(h[x]*s)*(H*0.66);g.lineTo(x/N*W,y);}g.lineTo(W,H);g.closePath();
+      const gr=g.createLinearGradient(0,H*0.3,0,H);gr.addColorStop(0,'#aab9a0');gr.addColorStop(1,'#10180e');g.fillStyle=gr;g.fill();}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
 
-  // DEMO 2: colormap mood
-  (function(){
-    const c=document.getElementById('cv-cmap');if(!c)return;const g=fit(c);
-    const N=180,h=field(N,3.7);const sl=document.getElementById('sl-cmap'),v=document.getElementById('v-cmap');
-    const moods=[{n:'mist',a:[16,21,26],b:[150,168,180]},{n:'ember',a:[40,16,8],b:[230,140,90]},
-                 {n:'violet',a:[30,16,46],b:[200,140,230]},{n:'blue',a:[12,20,40],b:[120,170,230]},{n:'canopy',a:[18,30,12],b:[160,210,90]}];
-    function lerp(a,b,t){return a.map((x,k)=>Math.round(x+(b[k]-x)*t));}
-    function draw(){
-      const W=c.width,H=c.height,p=+sl.value/100;const idx=Math.min(moods.length-1,Math.floor(p*moods.length));
-      const m=moods[idx];v.textContent=m.n;g.clearRect(0,0,W,H);
-      g.beginPath();g.moveTo(0,H);
-      for(let x=0;x<N;x++){const y=H*0.95-h[x]*(H*0.66);g.lineTo(x/N*W,y);}
-      g.lineTo(W,H);g.closePath();
-      const grd=g.createLinearGradient(0,H*0.25,0,H);
-      grd.addColorStop(0,'rgb('+m.b.join(',')+')');grd.addColorStop(1,'rgb('+m.a.join(',')+')');
-      g.fillStyle=grd;g.fill();
-    }
-    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{fit(c);draw();});draw();
-  })();
+  // DEMO 2: lighting
+  (function(){const c=document.getElementById('cv-light');if(!c)return;const N=200,h=field(N,2.6),sl=document.getElementById('sl-light'),v=document.getElementById('v-light');
+    function draw(){const g=fit(c),W=c.width,H=c.height,ang=(+sl.value)*Math.PI/180;v.textContent=sl.value+'°';
+      const lx=Math.cos(ang),ly=Math.sin(ang);g.clearRect(0,0,W,H);
+      for(let x=1;x<N;x++){const slope=(h[x]-h[x-1])*8.0;const nx=-slope,ny=1;const len=Math.hypot(nx,ny);
+        let diff=(nx/len*lx+ny/len*ly);diff=Math.max(0,diff);const shade=0.2+0.8*diff;
+        const y=H*0.92-h[x]*(H*0.6);g.strokeStyle='rgb('+(40*shade+10)+','+(110*shade+15)+','+(45*shade+10)+')';
+        g.lineWidth=2;g.beginPath();g.moveTo(x/N*W,y);g.lineTo(x/N*W,H);g.stroke();}
+      // sun marker
+      g.fillStyle='#ffd96a';g.beginPath();g.arc(W/2+lx*W*0.4,H*0.3-ly*H*0.22,8,0,6.28);g.fill();}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
 
-  // DEMO 3: morph
-  (function(){
-    const c=document.getElementById('cv-morph');if(!c)return;const g=fit(c);
-    const N=180,A=field(N,0.6),B=field(N,5.9).map(x=>0.4+x*0.7);
-    const sl=document.getElementById('sl-morph'),v=document.getElementById('v-morph');
-    function draw(){
-      const W=c.width,H=c.height,t=+sl.value/100;v.textContent=sl.value+'%';g.clearRect(0,0,W,H);
-      g.beginPath();g.moveTo(0,H);
-      for(let x=0;x<N;x++){const hv=A[x]+(B[x]-A[x])*t;const y=H*0.95-hv*(H*0.6);g.lineTo(x/N*W,y);}
-      g.lineTo(W,H);g.closePath();
-      const grd=g.createLinearGradient(0,H*0.25,0,H);grd.addColorStop(0,'#b4bcc0');grd.addColorStop(1,'#181d22');
-      g.fillStyle=grd;g.fill();
-    }
-    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{fit(c);draw();});draw();
-  })();
+  // DEMO 3: voronoi forest
+  (function(){const c=document.getElementById('cv-voro');if(!c)return;const sl=document.getElementById('sl-voro'),v=document.getElementById('v-voro');
+    function draw(){const g=fit(c),W=c.width,H=c.height,D=+sl.value;v.textContent=D;g.clearRect(0,0,W,H);
+      const cw=W/D, rows=Math.ceil(H/cw);
+      for(let gy=-1;gy<=rows;gy++)for(let gx=-1;gx<=D;gx++){
+        const r1=hash(gx*13.1+gy*7.7),r2=hash(gx*3.3+gy*9.1+5),r3=hash(gx*5.7+gy*2.3+11);
+        const px=(gx+r1)*cw,py=(gy+r2)*cw,rad=cw*(0.34+0.22*r3);
+        const ty=py/H;let col;
+        if(r3>0.92)col='rgb(210,140,180)';else if(r3>0.84)col='rgb(180,195,90)';
+        else{const base=40+ty*120;col='rgb('+(20+base*0.3)+','+(70+base)+','+(25+base*0.3)+')';}
+        g.fillStyle=col;g.beginPath();g.arc(px,py,rad,0,6.28);g.fill();}}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
 
-  // DEMO 4: fluid splat (simple particle smear following the mouse)
-  (function(){
-    const c=document.getElementById('cv-fluid');if(!c)return;let g=fit(c);
-    let parts=[];let last=null;
-    c.addEventListener('pointermove',e=>{
-      const r=c.getBoundingClientRect();const x=(e.clientX-r.left)*2,y=(e.clientY-r.top)*2;
-      let vx=0,vy=0;if(last){vx=(x-last.x)*0.25;vy=(y-last.y)*0.25;}last={x,y};
-      for(let k=0;k<3;k++)parts.push({x,y,vx:vx+(Math.random()-0.5)*4,vy:vy+(Math.random()-0.5)*4,life:1});
-      if(parts.length>1400)parts.splice(0,parts.length-1400);
-    });
+  // DEMO 4: fog / aerial
+  (function(){const c=document.getElementById('cv-fog');if(!c)return;const sl=document.getElementById('sl-fog'),v=document.getElementById('v-fog');
+    function draw(){const g=fit(c),W=c.width,H=c.height,f=+sl.value/100;v.textContent=sl.value;g.clearRect(0,0,W,H);
+      const haze=[200,210,190];
+      for(let layer=4;layer>=0;layer--){const dist=layer/4;const fog=Math.min(1,dist*f*1.6);
+        const base=[30+layer*8,70+layer*10,35+layer*6];const col=base.map((b,k)=>Math.round(b*(1-fog)+haze[k]*fog));
+        const yBase=H*(0.35+layer*0.13);const amp=H*0.16*(1-layer*0.12);
+        g.fillStyle='rgb('+col.join(',')+')';g.beginPath();g.moveTo(0,H);
+        for(let x=0;x<=W;x+=6){const y=yBase - amp*(0.5+0.5*Math.sin(x*0.012+layer*2)) - amp*0.4*Math.sin(x*0.03+layer);g.lineTo(x,y);}
+        g.lineTo(W,H);g.closePath();g.fill();}}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
+
+  // DEMO 5: morph
+  (function(){const c=document.getElementById('cv-morph');if(!c)return;const N=190,A=field(N,0.5),B=field(N,5.9).map(x=>0.35+x*0.8),sl=document.getElementById('sl-morph'),v=document.getElementById('v-morph');
+    function draw(){const g=fit(c),W=c.width,H=c.height,t=+sl.value/100;v.textContent=sl.value+'%';g.clearRect(0,0,W,H);
+      g.beginPath();g.moveTo(0,H);for(let x=0;x<N;x++){const hv=A[x]+(B[x]-A[x])*t;const y=H*0.95-hv*(H*0.62);g.lineTo(x/N*W,y);}g.lineTo(W,H);g.closePath();
+      const gr=g.createLinearGradient(0,H*0.25,0,H);gr.addColorStop(0,'#9fc07a');gr.addColorStop(1,'#16240e');g.fillStyle=gr;g.fill();}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
+
+  // DEMO 6: color ramp
+  (function(){const c=document.getElementById('cv-ramp');if(!c)return;const N=190,h=field(N,3.3),sl=document.getElementById('sl-ramp'),v=document.getElementById('v-ramp');
+    function draw(){const g=fit(c),W=c.width,H=c.height,b=+sl.value/100;v.textContent=sl.value;g.clearRect(0,0,W,H);
+      for(let x=0;x<N;x++){const t=h[x];const lo=[18,50,28],hi=[90+b*120,150+b*80,50+b*40];
+        const col=lo.map((c0,k)=>Math.round(c0+(hi[k]-c0)*t));const y=H*0.92-h[x]*(H*0.6);
+        g.strokeStyle='rgb('+col.join(',')+')';g.lineWidth=2;g.beginPath();g.moveTo(x/N*W,y);g.lineTo(x/N*W,H);g.stroke();}}
+    sl.addEventListener('input',draw);window.addEventListener('resize',()=>{if(c.closest('.active'))draw();});draw();})();
+
+  // DEMO 7: fluid smear (mouse)
+  (function(){const c=document.getElementById('cv-fluid');if(!c)return;let g=fit(c);let parts=[],last=null;
+    c.addEventListener('pointermove',e=>{const r=c.getBoundingClientRect();const x=(e.clientX-r.left)*2,y=(e.clientY-r.top)*2;let vx=0,vy=0;if(last){vx=(x-last.x)*0.25;vy=(y-last.y)*0.25;}last={x,y};
+      for(let k=0;k<3;k++)parts.push({x,y,vx:vx+(hash(parts.length+k)-0.5)*4,vy:vy+(hash(parts.length*2+k)-0.5)*4,life:1});if(parts.length>1400)parts.splice(0,parts.length-1400);});
     c.addEventListener('pointerleave',()=>last=null);
-    function loop(){
-      g.fillStyle='rgba(6,8,12,0.12)';g.fillRect(0,0,c.width,c.height);
-      for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.vy+=0.05;p.life*=0.965;
-        const a=p.life*0.5;g.fillStyle='rgba(172,255,70,'+a+')';g.beginPath();g.arc(p.x,p.y,6*p.life+1,0,6.28);g.fill();}
-      parts=parts.filter(p=>p.life>0.05);
-      requestAnimationFrame(loop);
-    }
-    window.addEventListener('resize',()=>{g=fit(c);});loop();
-  })();
+    function loop(){g.fillStyle='rgba(7,10,6,0.1)';g.fillRect(0,0,c.width,c.height);
+      for(const p of parts){p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.vy+=0.04;p.life*=0.965;g.fillStyle='rgba(159,226,74,'+(p.life*0.5)+')';g.beginPath();g.arc(p.x,p.y,6*p.life+1,0,6.28);g.fill();}
+      parts=parts.filter(p=>p.life>0.05);requestAnimationFrame(loop);}
+    window.addEventListener('resize',()=>{if(c.closest('.active'))g=fit(c);});loop();})();
 })();
 </script>
 </body>

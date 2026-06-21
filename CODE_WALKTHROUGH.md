@@ -1,23 +1,8 @@
-# 코드 정독 (Code Walkthrough) — 산 배경 복제본 전체 해부
+# 코드 정독 (Code Walkthrough) — 채색화 숲 버전
 
-> 이 문서는 `replica/` 의 **모든 코드가 어떻게 동작하는지** 파일별·라인별로 설명합니다.
-> 발표용 `presentation.html` 보다 훨씬 깊고, "직접 고칠 수 있을 만큼" 이해하는 것이 목표입니다.
-> 처음 보면 5장(GLSL 미니 사전)을 먼저 훑고 오면 셰이더 코드가 잘 읽힙니다.
-
----
-
-## 목차
-0. [큰 그림 — 파일 맵 & 데이터 흐름](#0-큰-그림)
-1. [한 프레임에 일어나는 일 (렌더 파이프라인)](#1-한-프레임에-일어나는-일)
-2. [반드시 알아야 할 3가지 기반 개념](#2-기반-개념)
-3. [`main.js` — 전체 오케스트레이션](#3-mainjs)
-4. [`Terrain.js` — 산 (변위 + 조명)](#4-terrainjs)
-5. [`Sky.js` — 하늘 돔](#5-skyjs)
-6. [`Water.js` — 물 (지형 읽기 해안선)](#6-waterjs)
-7. [`Fluid.js` — GPU 유체 시뮬레이션](#7-fluidjs)
-8. [`Post.js` — 후처리 합성/블룸](#8-postjs)
-9. [`projects.js` · `ui.js` · `panel.js`](#9-나머지-파일)
-10. [GLSL 미니 사전 (비개발자용)](#10-glsl-미니-사전)
+> `replica/`의 **현재 코드**가 어떻게 동작하는지 파일별·라인별로 설명합니다.
+> 이 프로젝트는 "안개 낀 3D 산 복제" → "절차적 채색화 숲"으로 발전했고, 이 문서는 **현재(숲) 상태** 기준입니다.
+> 처음이면 10장(GLSL 미니 사전)을 먼저 훑고 오면 셰이더가 잘 읽힙니다.
 
 ---
 
@@ -26,515 +11,334 @@
 ### 파일 맵
 ```
 src/
-  main.js       ← 진입점. 렌더러·카메라·루프, 모든 모듈을 조립·구동
-  Terrain.js    ← 레이어 1: 산 (높이맵 변위 + 색 + 조명 + 안개)  [ShaderMaterial]
-  Sky.js        ← 레이어 1: 배경 하늘 그라데이션 돔            [ShaderMaterial]
-  Water.js      ← 레이어 1: 물 (지형 높이 읽어 해안선·반사·리플)  [ShaderMaterial]
-  Fluid.js      ← 레이어 2: GPU 유체 시뮬 (마우스 안개)         [RawShaderMaterial × 8]
-  Post.js       ← 레이어 2: 합성(유체 덧칠) + 블룸 + 출력        [EffectComposer]
-  projects.js   ← 데이터: 프로젝트 목록 + 무드(색) + 높이맵 경로
-  ui.js         ← DOM: 프로젝트 리스트, 호버 핸들, 로더, 사운드
-  panel.js      ← DOM: 12개 레이어 on/off 빌드 스택 패널
+  main.js       ← 진입점: 렌더러·카메라·루프·패널, 모든 모듈 조립 + applyPreset(메뉴 전환)
+  Terrain.js    ← 산 (높이맵 변위 + 숲/암석/폭포/조명/안개)   ★ 셰이더의 심장
+  Sky.js        ← 하늘 그라데이션 돔
+  Water.js      ← 물 (지형 높이 읽어 해안선·반사·잔물결)
+  Fluid.js      ← GPU 유체 시뮬 (마우스 안개), 8종 셰이더 ping-pong
+  Post.js       ← 후처리: 유체 합성 + 블룸 + 톤매핑
+  projects.js   ← 데이터: 11개 프로젝트 프리셋 (원본 bundle.js에서 추출한 실값)
+  ui.js         ← 메뉴 리스트 + 클릭 핸들 + 로더
+  panel.js      ← 13겹 빌드스택 토글 패널
 ```
 
-### 데이터 흐름 (한 장의 그림)
+### 데이터 흐름
 ```
-                ┌─────────── 레이어 1: 3D 씬 (scene) ───────────┐
-  높이맵 .jpg ─▶│ Terrain (산)  Sky (하늘)  Water (물)          │
-  색맵 .jpg ───▶│   ▲ uniforms(높이·색·안개·조명)               │
-                └────────────────┬─────────────────────────────┘
-                                 │ RenderPass가 텍스처로 렌더
-                                 ▼
-  마우스 ─▶ Fluid (유체 sim) ─▶ dye/velocity 텍스처
-                                 │
-                                 ▼
-                ┌─────────── 레이어 2: 후처리 (composer) ───────┐
-                │ Composite(유체 덧칠+왜곡) ▶ Bloom ▶ Output    │
-                └────────────────┬─────────────────────────────┘
-                                 ▼  화면
-  호버 ─▶ applyMood() ─▶ GSAP이 uniforms를 천천히 트윈 ─▶ 다음 프레임부터 색·산 변함
+  높이맵·텍스처 ─▶ Terrain(정점 변위 + 표면 셰이더) ─┐
+                       Sky · Water ─────────────────┤─▶ RenderPass(텍스처로 렌더)
+  마우스 ─▶ Fluid(유체) ─▶ dye/velocity ────────────┘          │
+                                                               ▼
+                          Composite(유체 덧칠) ▶ Bloom ▶ Tonemap ▶ 화면
+  메뉴 클릭 ─▶ applyPreset() ─▶ GSAP이 uniforms를 1.6초 트윈 ─▶ 다음 프레임부터 산·색 변함
 ```
 
-핵심 통찰: **거의 모든 시각효과는 "uniform(셰이더에 넘기는 숫자) 하나"로 제어**됩니다.
-호버하면 JS가 그 숫자를 GSAP으로 천천히 바꾸고, 셰이더가 매 프레임 그 숫자로 다시 그립니다.
+핵심 통찰: **거의 모든 효과는 "uniform(셰이더에 넘기는 숫자) 하나"로 제어**됩니다. 13겹 패널·메뉴 전환이 전부 uniform 값을 바꾸는 것이고, 셰이더가 매 프레임 그 값으로 다시 그립니다.
 
 ---
 
 ## 1. 한 프레임에 일어나는 일
 
-`main.js`의 `frame()` (143–173행)이 초당 약 60번 반복됩니다. 순서:
-
+`main.js`의 `frame()`이 초당 약 60번:
 ```
-1. lenis.raf(time)            // 부드러운 스크롤 값 업데이트
-2. dt = 지난 프레임 경과시간
-3. if (fluid 켜짐):
-     pumpFluid()              // 마우스가 움직였으면 유체에 splat(잉크 주입) 예약
-     fluid.update(dt)         // 유체 물리 1스텝 (8종 셰이더를 FBO에 여러 번 그림)
-4. terrain.update(t)          // uTime 갱신 (살아있는 미세 움직임용)
-5. water.update(t, camPos)    // uTime, 카메라 위치 갱신 (반사 계산용)
-6. controls.update()          // OrbitControls 카메라
-7. post.setFluid(dye, vel)    // 유체 결과 텍스처를 합성 패스에 연결
-8. post.render()              // 씬을 텍스처로 렌더 → 합성 → 블룸 → 화면
+1. fluid.update(dt)      // 유체 물리 1스텝 (Fluid 켜졌을 때)
+2. terrain.update(t)     // uTime 갱신 (living motion·폭포 애니용)
+3. water.update(t, cam)  // uTime + 카메라 위치 (반사용)
+4. controls.update()     // OrbitControls 카메라
+5. post.render()         // 씬→텍스처→합성→블룸→톤매핑→화면
 ```
-
-별도로, **호버는 루프 밖**에서 일어납니다: `ui` 콜백 → `applyMood()` → GSAP이 uniform을
-1.4~1.6초에 걸쳐 트윈. 루프는 그저 매 프레임 "현재 uniform 값"으로 그릴 뿐입니다.
+**메뉴 전환은 루프 밖**에서: 클릭 → `applyPreset()` → GSAP이 uniform을 트윈. 루프는 그저 매 프레임 "현재 uniform 값"으로 그림.
 
 ---
 
-## 2. 기반 개념
-
-이 셋만 이해하면 나머지는 술술 읽힙니다.
+## 2. 반드시 알 개념 4가지
 
 ### (A) 셰이더 = GPU에서 점/픽셀마다 도는 함수
-- **버텍스 셰이더(vertex)**: 메시의 **꼭짓점(vertex)마다** 1번 실행. 점의 최종 위치를 정함.
-- **프래그먼트 셰이더(fragment)**: 화면에 칠해질 **픽셀마다** 1번 실행. 그 픽셀 색을 정함.
-- 둘 다 수십만~수백만 개가 **동시에 병렬** 실행 → 실시간 가능.
-- `varying`: 버텍스→프래그먼트로 값을 넘기는 통로 (중간 점들은 자동 보간됨).
-- `uniform`: JS→셰이더로 넘기는 "상수" (이 프레임 동안 모든 점/픽셀이 같은 값을 봄).
+- **버텍스 셰이더**: 정점(14.8만)마다 1번 — 점의 최종 위치
+- **프래그먼트 셰이더**: 픽셀(200만)마다 1번 — 그 픽셀 색
+- `varying` = 버텍스→프래그로 값 전달(중간 보간), `uniform` = JS→셰이더 상수
 
-### (B) 텍스처는 그림이 아니라 "숫자 격자"
-- `texture2D(tex, uv)` 는 `uv`(0~1 좌표) 위치의 픽셀 RGBA(0~1 숫자 4개)를 반환.
-- 높이맵: `.r`(빨강) 채널을 **높이**로 사용 (흑백이라 r=g=b).
-- 속도장(유체): `.xy` 를 **흐름 속도**로 사용 (색이 아님).
+### (B) 텍스처 = "숫자 격자"
+- `texture2D(t, uv)` = uv 위치의 RGBA(0~1). 높이맵은 `.r`을 **높이**로 사용.
 
-### (C) Render Target / FBO = "화면 대신 텍스처에 그리기"
-- 보통 렌더 결과는 화면으로 감. `renderer.setRenderTarget(rt)` 하면 **텍스처 rt에 그림**.
-- 그 텍스처를 다음 셰이더의 입력으로 다시 넣을 수 있음 → 유체·후처리의 핵심.
-- **plane 회전 규칙** (Terrain/Water 공통): `PlaneGeometry`는 XY 평면에 누워 있음.
-  `mesh.rotation.x = -PI/2` 로 눕히면 → **로컬 +Z(변위 방향)가 월드 +Y(위)** 가 됨.
-  그래서 버텍스 셰이더에서 `pos.z += 높이` 하면 산이 위로 솟음.
+### (C) plane 회전 규칙
+- `PlaneGeometry`는 XY 평면. `mesh.rotation.x = -PI/2`로 눕히면 **로컬 +Z(변위) = 월드 +Y(위)**. 그래서 `pos.z += 높이` → 산이 위로.
+
+### (D) 두 상태 모프 (two-state cross-fade)
+- 산 전환 시 **출발 지형(A)·도착 지형(B)을 둘 다 완성**해두고 `uMorph`(0→1)로 높이를 보간.
+- 이유: 높이맵 offset을 연속으로 밀면 텍스처가 **옆으로 미끄러져** 보임. 두 완성본을 cross-fade하면 봉우리가 **제자리에서** 솟고 꺼짐.
 
 ---
 
 ## 3. `main.js`
 
-전체 조립과 구동. 위에서 아래로.
-
-### 렌더러 / 톤매핑 (18–25행)
+### 렌더러 / 톤매핑
 ```js
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, ... });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 레티나 대응(최대 2배)
-renderer.toneMapping = THREE.ACESFilmicToneMapping;            // 하이라이트 압축
+renderer.toneMapping = THREE.ACESFilmicToneMapping;  // 밝기 1.0 초과를 압축(흰색 폭발 방지)
 renderer.toneMappingExposure = 0.95;
 ```
-- **톤매핑**: 1.0을 넘는 밝은 값을 부드럽게 눌러 흰색 폭발을 막음. (이게 빠져서 "왜 하얗게 나오지" 버그가 났었음 → 12번 레이어)
 
-### 카메라 (32–35행)
+### 카메라 (원본 실값)
 ```js
-const camera = new THREE.PerspectiveCamera(31.4172, aspect, 0.1, 3000);
-camera.position.set(0, 10, 95);           // 낮고 가까이
-const camTarget = new THREE.Vector3(0, 42, -150); // 위/먼 곳을 봄 → 하늘이 상단에
+new THREE.PerspectiveCamera(30, aspect, 0.1, 3000);  // fov 30
+camera.position.set(0, 65, 200);
+camera.lookAt(0, 0, 0);
 ```
-- `fov 31.4172` 는 **원본 사이트 bundle에서 추출한 실제 값**. 좁은 화각(망원) = 압축감.
 
-### 모듈 생성 & 씬 추가 (55–67행)
+### 모듈 생성
 ```js
-const manager = new THREE.LoadingManager();  // 텍스처 로딩 진행률 추적
 const terrain = new Terrain(manager); scene.add(terrain.mesh);
-const sky = new Sky();                 scene.add(sky.mesh);
-const water = new Water(terrain);      scene.add(water.mesh); // terrain을 넘김(높이 공유)
-const fluid = new Fluid(renderer, { simRes: 256 });           // 씬에 안 넣음(오프스크린)
+const sky = new Sky();    scene.add(sky.mesh);
+const water = new Water(terrain);  scene.add(water.mesh);  // terrain의 높이 uniform 공유
+const fluid = new Fluid(renderer, { simRes: 256 });        // 오프스크린(씬에 안 넣음)
 const post = new Post(renderer, scene, camera);
 ```
-- `Water`가 `terrain`을 받는 이유: **terrain의 높이맵 uniform을 공유**해서 물이 산 높이를 읽음(해안선). 산이 모핑되면 물도 같이 모핑.
-- `fluid`는 화면이 아니라 자기 텍스처에 그리므로 `scene.add` 안 함.
 
-### 무드 시스템 = 호버 → uniform 트윈 (79–97행)
+### 메뉴 전환 = `applyPreset()` (핵심)
+클릭하면 그 프로젝트로 전환. **두 상태 모프** + **분위기 트윈** + **물 높이**:
 ```js
-const U = terrain.uniforms;
-const tweenColor = (col, hex, d=1.4) => {
-  const c = new THREE.Color(hex);
-  gsap.to(col, { r:c.r, g:c.g, b:c.b, duration:d, ease:'power2.out' }); // 색을 1.4초간 보간
-};
-function applyMood(mood, dispIndex) {
-  const target = [0,0,0,0]; target[dispIndex] = 1;   // 원-핫: 해당 높이맵만 100%
-  gsap.to(U.uDispAlpha.value, { x:target[0], y:target[1], z:target[2], w:target[3],
-                                duration:1.6, ease:'power2.inOut' });  // 산 모핑
-  tweenColor(U.uColorA.value, mood.a);     // 계곡색
-  tweenColor(U.uColorB.value, mood.b);     // 능선색
-  tweenColor(U.uFogColor.value, mood.haze);
-  tweenColor(sky.uniforms.uHorizon.value, mood.haze); // 하늘·물도 같이
+function applyPreset(p) {
+  // 1) 현재 "도착(B)"을 "출발(A)"로 스냅샷
+  U.uDispAlphaA.value.copy(U.uDispAlphaB.value);
+  U.uDispOffA.value.copy(U.uDispOffB.value);
+  U.uDispScaleA.value = U.uDispScaleB.value; ...
+
+  // 2) 새 프리셋을 "도착(B)"으로 (즉시)
+  U.uDispAlphaB.value.set(...one-hot p.disp...);
+  U.uDispOffB.value.set(p.dispOff[0], p.dispOff[1]);
+  U.uDispScaleB.value = p.dispScale * DISP_MULT;   // DISP_MULT=1.6 (우리 스케일로 환산)
   ...
+
+  // 3) uMorph 0→1 트윈 → 제자리 모프
+  U.uMorph.value = 0;
+  gsap.to(U.uMorph, { value: 1, duration: 1.6, ease: 'power2.inOut' });
+
+  // 4) 분위기: 프로젝트 fog색을 크림/초록과 섞어 하늘·물·안개·배경에 틴트
+  const fog = new THREE.Color(p.fog);
+  const haze = fog.clone().lerp(new THREE.Color('#e6e3d4'), 0.62);
+  tweenColorTo(U.uFogColor.value, haze);
+  tweenColorTo(sky.uniforms.uHorizon.value, haze); ...
+
+  // 5) 해수면 = 산 높이의 55% (원본: 봉우리가 물 위 섬처럼)
+  const waterY = terrain.mesh.position.y + 0.55 * (p.dispScale * DISP_MULT);
+  gsap.to(water.mesh.position, { y: waterY, duration: 1.6 });
+  gsap.to(water.uniforms.uWaterLevel, { value: waterY, duration: 1.6 });
 }
 ```
-- **이것이 "글씨 호버 → 산·색 변신"의 전부입니다.** GSAP이 uniform 숫자를 천천히 바꾸고, 셰이더가 매 프레임 그 값으로 다시 그릴 뿐.
-- `uDispAlpha`(vec4)는 4개 높이맵의 가중치. `[1,0,0,0]`→`[0,0,1,0]`로 트윈하면 산 A가 산 C로 녹아듦.
 
-### 마우스 → 유체 splat (99–124행)
-```js
-window.addEventListener('pointermove', (e) => {
-  const x = e.clientX / window.innerWidth;        // 0~1 정규화
-  const y = 1 - e.clientY / window.innerHeight;   // y 뒤집기(텍스처 좌표는 아래가 0)
-  pointer.px = pointer.x; pointer.py = pointer.y;  // 이전 위치 보관
-  pointer.x = x; pointer.y = y; pointer.moved = true;
-  parallax.tx = (x-0.5)*10; parallax.ty = (y-0.5)*5; // 카메라 미세 이동 목표
-});
-function pumpFluid() {
-  if (!pointer.moved) return;
-  const dx = (pointer.x - pointer.px) * 1200;   // 마우스 이동량 = 주입할 "힘"
-  const dy = (pointer.y - pointer.py) * 1200;
-  splatColor.set(...).multiplyScalar(0.12).addScalar(0.04); // 잉크 색(현재 무드 기반)
-  fluid.splat(pointer.x, pointer.y, dx, dy, splatColor);    // 유체에 예약
-}
-```
-- 마우스 **이동 속도**가 유체에 주입하는 힘(velocity)이 됩니다. 빨리 움직일수록 세게 휘저음.
+### 메뉴는 **클릭** 선택 (호버 아님)
+`ui.js`가 각 `<a>`에 `click` → `onHover(i)` → `applyPreset(PROJECTS[i])`. 다른 메뉴 클릭 전까지 유지.
 
-### 루프 (143–173행) — [1장] 참고
+### 마우스 → 유체 splat
+`pointermove`에서 이동량(dx,dy)을 유체에 주입 + 카메라 parallax 목표.
 
-### 빌드 스택 패널 (179–194행)
+### 빌드스택 패널 (13겹)
 ```js
 new Panel([
-  { id:1, label:'Terrain', on:()=>scene.add(terrain.mesh), off:()=>scene.remove(terrain.mesh) },
-  { id:2, label:'Color grade', on:()=>U.uGradeOn.value=1, off:()=>U.uGradeOn.value=0 },
-  ... // 12개
+  { id:1, label:'Terrain', on:()=>scene.add(terrain.mesh), ... },
+  { id:2, label:'Color grade', on:()=>U.uGradeOn.value=1, ... },
+  { id:3, label:'Lighting',  ... uLightOn },
+  { id:4, label:'Fog / haze',... uFogOn },
+  { id:5, label:'Sky',       ... scene.add/remove sky },
+  { id:6, label:'Water',     ... scene.add/remove water },
+  { id:7, label:'Living motion', ... uAnimOn },
+  { id:8, label:'Click morph',   ... state.morph },
+  { id:9, label:'Fluid mist', on:()=>{ state.fluid=true; setMist(0.35); post.composite.enabled=true; }, ... }, // 유체+합성 합침
+  { id:10, label:'Bloom',    ... post.bloom.enabled },
+  { id:11, label:'Tonemap',  ... renderer.toneMapping },
+  { id:12, label:'Rock / Waterfall', ... uRockOn },
+  { id:13, label:'Forest',   ... uForestOn },
 ]);
+panel.reset();  // 시작은 Terrain만
 ```
-- 각 레이어를 끄는 방식 3종: **mesh add/remove**(1,5,6) · **uniform 0/1**(2,3,4,7) · **Pass.enabled**(10,11) · **상태 플래그**(8,9) · **renderer 설정**(12).
 
 ---
 
-## 4. `Terrain.js`
+## 4. `Terrain.js` — 가장 중요한 파일
 
-가장 중요한 파일. **버텍스 셰이더가 산을 만들고, 프래그먼트 셰이더가 색·조명·안개를 칠합니다.**
+### 4.1 버텍스 — 산 모양 + 법선 + 곡률
 
-### 4.1 버텍스 셰이더 — 산 모양 만들기
-
-#### 높이맵 블렌드 함수 (28–35행)
+**두 상태 높이 블렌드** (모프):
 ```glsl
-float bh(vec2 uv) {                                   // blended height
-  float wsum = dot(uDispAlpha, vec4(1.0)) + 1e-4;     // 가중치 합 (정규화용)
-  float h = texture2D(tDisp0, uv).r * uDispAlpha.x    // 4개 높이맵을
-          + texture2D(tDisp1, uv).r * uDispAlpha.y    // 알파 가중치로
-          + texture2D(tDisp2, uv).r * uDispAlpha.z    // 더함
-          + texture2D(tDisp3, uv).r * uDispAlpha.w;
-  return h / wsum;                                     // 합으로 나눠 정규화
+float bh(vec2 uv, vec4 alpha, vec2 off) {           // 4개 높이맵을 알파로 섞음
+  vec2 s = uv + off;
+  return (texture2D(tDisp0,s).r*alpha.x + ... ) / wsum;
+}
+float worldH(vec2 uv) {                              // 두 완성 지형을 uMorph로 섞음
+  return mix(bh(uv, uDispAlphaA, uDispOffA) * uDispScaleA,
+             bh(uv, uDispAlphaB, uDispOffB) * uDispScaleB, uMorph);
 }
 ```
-- `uDispAlpha`가 `[1,0,0,0]`이면 tDisp0만, `[0.5,0.5,0,0]`이면 두 산의 중간 모양.
-- **모핑 = 이 알파를 시간에 따라 바꾸는 것** (main.js의 GSAP).
-
-#### 높이 적용 + 미세 움직임 (37–44행)
+**main()**:
 ```glsl
-void main() {
-  vUv = uv;
-  float h = bh(uv);                                   // 이 점의 높이
-  float anim = texture2D(tDisp0, uv*1.7 + vec2(uTime*0.012, uTime*0.008)).r; // 흐르는 노이즈
-  h += (anim - 0.5) * 0.035 * uAnimOn;                // 살짝 더해 "숨쉬는" 느낌 (07 레이어)
-  vHeight = h;                                        // 프래그로 넘김(색칠용)
+float h = worldH(uv);
+// living motion: 흐르는 노이즈를 아주 살짝(±0.4) — 강하면 물 경계가 깜빡임
+h += (texture2D(tDisp0, uv*1.7 + uTime*0.01).r - 0.5) * 0.8 * uAnimOn;
+
+vHeight = mix(bh(uv,A,offA), bh(uv,B,offB), uMorph);   // 0~1 정규화 높이(색용)
+
+// 법선 = 이웃 높이차(기울기)
+float hX = worldH(uv+오른쪽), hY = worldH(uv+위);
+vNormal = normalize(vec3(-(hX-h)/dx, 1.0, -(hY-h)/dy));
+
+// 곡률(Laplacian): 이웃합 - 4*중심 → 양수=오목한 골(폭포용)
+vConcavity = (hX + hXn + hY + hYn - 4.0*h);
+
+pos.z += h;   // 위로 변위
 ```
 
-#### 법선(normal) 계산 — 조명의 핵심 (46–54행)
+### 4.2 프래그먼트 — 표면 색 (미스티/숲 + 암석/폭포 + 조명 + 안개)
+
+**A) 미스티 마블 표면** (Forest OFF):
 ```glsl
-  float e = 1.0 / 600.0;                  // 아주 작은 uv 거리
-  float hX = bh(uv + vec2(e, 0.0));       // 오른쪽 이웃 높이
-  float hY = bh(uv + vec2(0.0, e));       // 위쪽 이웃 높이
-  vNormal = normalize(vec3(
-    -(hX - h) * uDispScale / (e * uTerrainSize.x),  // x방향 기울기
-    1.0,                                            // 위쪽
-    -(hY - h) * uDispScale / (e * uTerrainSize.y)   // z방향 기울기
-  ));
+float gg = (흑백텍스처 두 상태 블렌드 + contrast);
+vec3 marble = mix(vec3(0.5), mix(uColorA, uColorB, t), uGradeOn) * (0.4 + gg*0.75);
 ```
-- **원리**: 이웃 점과의 높이차 = 그 지점의 "기울기". 기울기로 표면이 향한 방향(법선)을 구함.
-- 가파른 면일수록 법선이 옆으로 눕고, 평평하면 위(+Y)를 향함. → 프래그에서 빛 계산에 씀.
 
-#### 점 위치 확정 (56–61행)
+**B) 절차적 숲** (Forest ON) — Voronoi 나무:
 ```glsl
-  vec3 pos = position;
-  pos.z += h * uDispScale;                 // 로컬 +Z로 밀어올림(=월드 위로, 회전 덕분)
-  vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-  vViewZ = -mvPosition.z;                   // 카메라로부터의 깊이(안개용)
-  gl_Position = projectionMatrix * mvPosition; // 화면 좌표로 투영
-}
+vec2 fuv = vUv * 240.0;                  // 칸 밀도
+// 9개 이웃 셀 중 가장 가까운 점까지 거리 md, 그 셀 id
+for (y=-1..1) for (x=-1..1) { 점=hash2(셀+이웃); md=min(md, 거리²); }
+float dab = smoothstep(sz, sz*0.35, sqrt(md));    // 둥근 나무 도장 (랜덤 크기 sz)
+
+// 경사: 절벽엔 나무 제거(암석 자리)
+float slope = 1.0 - normalize(vNormal).y;
+float steepM = smoothstep(0.40, 0.54, slope);
+dab *= 1.0 - steepM * uRockOn;
+
+// 색 = 높이로 초록 그라데이션 + 랜덤 + 드물게 벚꽃/노랑
+vec3 baseGreen = mix(진초록, 연두, t);
+vec3 forestAlbedo = baseGreen * mix(0.74,1.0,dab) * (0.90+0.2*r2);
+if (r3>0.93) forestAlbedo = mix(forestAlbedo, 핑크, dab*0.6);   // 벚꽃
 ```
-- `vViewZ`(카메라 거리)를 프래그로 넘겨 **안개량** 계산에 사용.
 
-### 4.2 프래그먼트 셰이더 — 색·조명·안개
-
-#### 색 그레이딩 (84–91행)
+**암석 + 폭포** (uRockOn):
 ```glsl
-float t = smoothstep(0.0, 0.6, vHeight);          // 높이를 0~1로 (0.6 이상은 다 능선)
-vec3 grade = mix(uColorA, uColorB, t);            // 계곡색 ↔ 능선색 섞기
-float detail = dot(texture2D(tColor, vUv).rgb, vec3(0.333)); // 컬러텍스처를 명암으로만
-vec3 albedo = mix(vec3(0.55), grade, uGradeOn) * (0.7 + detail*0.3);
-//             ↑ uGradeOn=0이면 회색(0.55), 1이면 무드색.  detail로 미세 명암.
+// 암석: 가파른 곳을 회청색 바위로 (같은 steepM → 나무와 안 겹침)
+vec3 rockCol = mix(짙은회청, 밝은회청, rockTex);
+vec3 rw = mix(forestAlbedo, rockCol, steepM);
+
+// 폭포: 오목한 골(곡률) + 가파름 + 가는 세로줄기 + 높이대
+float valley = smoothstep(0.15, 1.0, vConcavity);
+float wf = valley * 세로줄기 * steepM * 높이대 * 흐름 * uRockOn;  // 마스크 보관
+forestAlbedo = mix(forestAlbedo, rw, uRockOn);
 ```
 
-#### 방향성 조명 (93–100행)
+**표면 선택 + 조명 + 폭포 + 안개**:
 ```glsl
-vec3 n = normalize(vNormal);
-float diff = clamp(dot(n, normalize(uSunDir)), 0.0, 1.0); // 면이 해를 마주본 정도(0~1)
-float skyAmb = clamp(n.y*0.5+0.5, 0.0, 1.0);              // 위를 향할수록 하늘빛 받음
-vec3 lit = albedo * (0.5 + 0.5*diff)        // 햇빛(그림자도 0.5는 남겨 부드럽게)
-         + albedo * skyAmb * 0.3            // 하늘 앰비언트
-         + uSunColor * pow(diff,5.0) * 0.18; // 정면으로 받은 면에 따뜻한 하이라이트
-vec3 col = mix(albedo, lit, uLightOn);      // uLightOn=0이면 납작(albedo 그대로)
-```
-- **`dot(법선, 햇빛방향)`** 이 조명의 심장. 두 방향이 일치(정면)하면 1=밝음, 직각이면 0=그림자.
+vec3 albedo = mix(marble, forestAlbedo, uForestOn);   // 13번 토글
 
-#### 안개 / 대기원근 (102–107행)
-```glsl
-col = mix(col, uFogColor, smoothstep(0.45,1.0,vHeight)*0.18*uFogOn); // 높은 봉우리 살짝 헤이즈
-float fog = smoothstep(uFogNear, uFogFar, vViewZ);   // 560~1450 거리 사이를 0→1
-col = mix(col, uFogColor, fog * uFogOn);             // 멀수록 안개색으로
-gl_FragColor = vec4(col, 1.0);
-```
-- `vViewZ`(카메라 거리)가 560 미만이면 안개 0(또렷), 1450 초과면 1(완전 헤이즈).
+// 강한 빛/그림자 → 숲을 켜도 3D 형태가 읽힘
+float diff = dot(normalize(vNormal), uSunDir);
+vec3 lit = albedo*(0.25 + 0.8*diff) + 하늘앰비언트 + 햇빛하이라이트;
+vec3 col = mix(albedo, lit, uLightOn);
 
-### 4.3 JS 쪽 — 텍스처 로딩 & 메시 (111–162행)
-```js
-const load = (url) => {
-  const t = loader.load(url);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.NoColorSpace;   // ★ 높이맵은 "데이터"라 sRGB 변환 금지
-  return t;
-};
-...
-uDispAlpha: { value: new THREE.Vector4(1,0,0,0) }, // 기본 = landscape 높이맵
-uDispScale: { value: 108.0 },                      // 산 높이(원본 mountainHeight 54.35 참고해 조정)
-uFogNear: { value: 560 }, uFogFar: { value: 1450 },
-uSunDir: { value: new THREE.Vector3(-0.5,0.45,0.4).normalize() }, // 햇빛 방향
-...
-const geo = new THREE.PlaneGeometry(800, 1200, 320, 460); // 폭800×깊이1200, 320×460분할
-this.mesh.rotation.x = -Math.PI/2;  // 눕히기 (로컬+Z → 월드+Y)
-this.mesh.position.y = -18;         // 계곡 바닥 높이
+// 폭포는 조명 뒤에 파란색으로 덧칠(그늘에서도 밝게)
+col = mix(col, vec3(0.20,0.55,1.0), wf * uForestOn);
+
+// 대기 원근: 멀수록 (메뉴별) 안개색
+col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, vViewZ) * uFogOn);
 ```
-- `320×460` 분할 = (321×461) 약 14.8만 개 버텍스. 많을수록 산이 매끄럽지만 무거움.
-- `NoColorSpace`가 중요: sRGB로 읽으면 높이값이 왜곡됨.
+
+### 4.3 JS (Terrain 클래스)
+- 높이맵 4종 로드(`NoColorSpace` — 데이터라 sRGB 변환 금지), 흑백 표면맵 1종
+- uniforms: 두 상태 쌍(`uDispAlphaA/B`, `uDispOffA/B`, `uDispScaleA/B`, `uMorph`, `uTexScaleA/B`...) + 토글들(`uForestOn·uRockOn·uGradeOn·uLightOn·uFogOn·uAnimOn`)
+- `PlaneGeometry(800, 1200, 320, 460)` ≈ 14.8만 정점, `rotation.x=-PI/2`, `position.y=-18`
 
 ---
 
 ## 5. `Sky.js`
-
-장면을 감싸는 큰 구(반지름 900) **안쪽**에 그라데이션을 칠한 배경.
-
-```glsl
-// 버텍스: 정점이 향하는 방향을 넘김
-varying vec3 vDir;
-void main(){ vDir = normalize(position); gl_Position = ...; }
-
-// 프래그: 바라보는 높이로 천정↔지평선 색 섞기
-float h = clamp(vDir.y * 1.4, -1.0, 1.0);       // -1(아래) ~ +1(위)
-float t = smoothstep(-0.15, 0.65, h);           // 지평선→천정 블렌드
-vec3 col = mix(uHorizon, uZenith, t);
-float glow = exp(-abs(h)*9.0) * 0.18;           // 지평선 근처 은은한 발광(god-ray 흉내)
-col += uHorizon * glow;
-```
-- `side: THREE.BackSide` — 구의 **안쪽 면**을 렌더(우리가 구 안에 있으니까).
-- `fog:false`, `depthWrite:false` — 배경이라 깊이 안 씀, 안개 영향 안 받음.
-- `uHorizon`/`uZenith`는 무드에 따라 트윈됨 → 하늘색도 호버 시 변함.
+큰 구(BackSide) 안쪽 그라데이션 — 바라보는 높이로 천정↔지평선 색 섞기 + 지평선 발광. 색은 메뉴마다 크림/초록 틴트로 트윈.
 
 ---
 
 ## 6. `Water.js`
-
-물 평면. **핵심은 "그 아래 지형 높이를 셰이더 안에서 다시 계산"** 해 해안선을 만드는 것.
-
-### 지형 높이 역추적 (43–54행)
+물 평면. **핵심: 그 아래 지형 높이를 셰이더에서 다시 계산**(Terrain과 같은 두 상태 블렌드)해 해안선을 만듦.
 ```glsl
-float terrainHeight(vec3 w) {                  // w = 이 물 픽셀의 월드 좌표
-  vec2 tuv = vec2(w.x/uTerrainSize.x + 0.5,    // 월드 좌표 → 지형 UV로 변환
-                  0.5 - w.z/uTerrainSize.y);   // (Terrain의 회전/매핑을 거꾸로)
-  float inside = step(0.0,tuv.x)*step(tuv.x,1.0)*step(0.0,tuv.y)*step(tuv.y,1.0); // 지형 범위 안?
-  vec2 c = clamp(tuv, 0.0, 1.0);
-  float h = (4개 높이맵 알파 블렌드, Terrain과 동일 공식);
-  return uTerrainBaseY + h * uDispScale * inside;  // 월드 높이 (범위 밖이면 바닥)
+float terrainHeight(vec3 w) {                // 물 픽셀 아래 지형 높이
+  vec2 tuv = 월드→지형UV;
+  float hA = sampleH(tuv+uDispOffA, uDispAlphaA) * uDispScaleA;
+  float hB = sampleH(tuv+uDispOffB, uDispAlphaB) * uDispScaleB;
+  return baseY + mix(hA, hB, uMorph) * inside;  // 산이 모프하면 해안선도 같이
 }
+float depth = uWaterLevel - terrainHeight(vWorld);
+if (depth < -1.5) discard;                   // 산이 높으면 물 안 그림(땅)
+// + 얕을수록 거품, 프레넬 하늘반사, 높이텍스처 2번 스크롤 잔물결
 ```
-- Terrain과 **같은 높이맵/알파 uniform을 공유**(main.js에서 넘김)하므로 결과가 정확히 일치.
-- 그래서 산이 모핑되면 물의 해안선도 자동으로 같이 변형됨.
-
-### 수심 → 해안선/거품 (56–88행)
-```glsl
-float terrainY = terrainHeight(vWorld);
-float depth = uWaterLevel - terrainY;     // >0 물속, <0 땅
-if (depth < -1.5) discard;                // 확실한 땅이면 물 안 그림
-
-// 잔물결 노멀: 높이텍스처를 어긋나게 흘려 미분 → 표면 기울기
-float hL=ripple(xz-e), hR=ripple(xz+e), ...;
-vec3 n = normalize(vec3((hL-hR)*0.5, 0.5, (hD-hU)*0.5));
-
-// 프레넬 반사: 비스듬히 볼수록 하늘색
-float fres = pow(1.0 - clamp(dot(n, viewDir),0.0,1.0), 3.0);
-vec3 col = mix(uDeep, uHorizon, clamp(fres+0.18, 0.0, 1.0)); // 깊은물색↔하늘색
-
-// 해안선 거품: 얕을수록 밝게 + 리플로 흔들어 고정선 방지
-float shore = smoothstep(0.0, 9.0, depth);
-float foam = (1.0 - shore) * (0.45 + 0.55*ripple(xz + uTime*6.0));
-col = mix(col, uHorizon*1.2, foam*foam*0.7);
-```
-- `ripple()`(36–40행): 높이텍스처를 **서로 다른 속도로 2번 스크롤**해 더함 → 끝없이 일렁이는 잔물결(이음새 없음). 이게 분석에서 본 "flow + dual normal" 기법.
-- `discard`: 픽셀을 아예 안 그림 → 산이 물 위로 솟은 부분은 물이 사라짐.
+- 머티리얼에 **polygonOffset** → 해안선 z-fighting(물·지형 면 충돌 깜빡임) 방지
+- `uWaterLevel`과 `mesh.position.y`를 applyPreset에서 동기화 트윈
 
 ---
 
-## 7. `Fluid.js` — GPU 유체 시뮬레이션
-
-가장 정교. **8종 셰이더를 텍스처(FBO)에 순서대로 그려** Navier-Stokes 방정식을 풉니다.
-
-### 7.1 공용 버텍스 + 헬퍼 (13–37행)
-```glsl
-// 모든 유체 패스가 공유. 화면 꽉 채운 사각형 + 이웃 좌표 미리 계산
-varying vec2 vUv, vL, vR, vT, vB;
-void main(){
-  vUv = uv;
-  vL = vUv - vec2(texelSize.x, 0.0);  // 왼/오/위/아래 이웃 픽셀 좌표
-  vR = vUv + vec2(texelSize.x, 0.0);
-  vT = vUv + vec2(0.0, texelSize.y);
-  vB = vUv - vec2(0.0, texelSize.y);
-  gl_Position = vec4(position.xy, 0.0, 1.0); // 카메라 없이 전체화면
-}
+## 7. `Fluid.js` — GPU 유체
+8종 풀스크린 셰이더를 텍스처(FBO)에 ping-pong으로 그려 Navier-Stokes를 풂.
 ```
-```js
-const f = (frag, uniforms) => new THREE.RawShaderMaterial({ ... });
-// ★ texelSize uniform을 프래그 프리픽스에 선언 — 이걸 빼먹어서 "유체 전체가 안 보이던" 버그가 났었음
+splat(마우스 주입) → curl → vorticity → divergence → pressure(Jacobi 20회)
+→ gradientSubtract → advect velocity → advect dye
 ```
-
-### 7.2 더블버퍼(ping-pong) FBO (47–65행)
-```js
-const make = () => new THREE.WebGLRenderTarget(simRes, simRes, {
-  type: THREE.HalfFloatType,   // 음수·소수 저장(속도값) — 일반 8bit로는 불가
-  minFilter: LinearFilter, ...
-});
-const dbl = () => ({ read:make(), write:make(), swap(){...} }); // 읽기/쓰기 2장
-this.velocity = dbl();  // 속도장
-this.dye = dbl();       // 염료장(보이는 안개)
-this.pressure = dbl();  // 압력장
-this.divergence = make(); this.curl = make();
-```
-- **왜 2장?** 같은 텍스처를 읽으며 동시에 쓸 수 없음 → A로 읽고 B에 쓰고 swap. 탁구처럼.
-- **왜 HalfFloat?** 속도는 음수/소수라서 일반 0~255 텍스처로는 저장 불가.
-
-### 7.3 8종 셰이더 (각 1줄 요약)
-| 셰이더 | 하는 일 |
-|--------|---------|
-| `splat` (70) | 한 점에 가우시안으로 색/힘 주입 (마우스) |
-| `curl` (85) | 소용돌이 세기 측정 |
-| `vorticity` (96) | 소용돌이를 다시 더해 디테일 살림 |
-| `divergence` (118) | "발산"(압축된 정도) 측정 |
-| `clear` (134) | 압력장을 0.8배로 감쇠 |
-| `pressure` (140) | 압력 방정식 1회 반복(Jacobi) |
-| `gradientSubtract` (153) | 압력 기울기를 빼 비압축성으로 |
-| `advection` (167) | 속도를 따라 값을 흘려보냄 |
-
-가장 중요한 advection (167–176행):
-```glsl
-void main() {
-  vec2 coord = vUv - dt * texture2D(uVelocity, vUv).xy * texelSize; // "방금 어디서 왔나" 역추적
-  gl_FragColor = texture2D(uSource, coord) / (1.0 + dissipation*dt); // 그 지점 값을 가져옴(+감쇠)
-}
-```
-
-### 7.4 한 스텝 순서 (215–271행)
-```js
-update(dt, aspect) {
-  this._applySplats(aspect);   // 1. 마우스 주입
-  // 2. curl → 3. vorticity (소용돌이 강화)
-  // 4. divergence → 5. 압력 감쇠 → 6. pressure Jacobi 20회 → 7. gradientSubtract
-  //    (= 비압축성 유체로 만드는 압력 투영 단계)
-  // 8. advect velocity (속도가 자기 자신을 따라 이동)
-  // 9. advect dye    (잉크가 속도를 따라 이동)  ← 이게 화면에 보임
-  this.renderer.setRenderTarget(null); // 다시 화면 모드로
-}
-```
-- 각 단계는 `_blit(material, target)` = "이 셰이더를 저 텍스처에 한 번 그려" + 필요시 `swap()`.
-- 결과: `dyeTexture`(보이는 안개), `velocityTexture`(왜곡용)를 Post가 가져감.
+- 속도장/염료장/압력장은 **두 장씩(read/write) swap** (같은 텍스처 읽으며 못 씀)
+- `HalfFloatType` (음수·소수 저장), simRes 256
+- 결과 `dyeTexture`(보이는 안개) + `velocityTexture`(왜곡용)을 Post가 가져감
 
 ---
 
 ## 8. `Post.js` — 후처리
-
-씬을 화면에 직접 그리지 않고, **여러 패스를 거쳐** 마무리합니다 (`EffectComposer`).
-
-### 패스 순서 (47–60행)
 ```js
-this.composer.addPass(new RenderPass(scene, camera)); // ① 3D 씬을 텍스처로
-this.composite = new ShaderPass(CompositeShader);     // ② 유체 덧칠 + 왜곡
-this.bloom = new UnrealBloomPass(size, 0.35, 0.5, 0.85); // ③ 발광(세기,반경,문턱)
-this.composer.addPass(new OutputPass());              // ④ 톤매핑 + sRGB 출력
+RenderPass(scene, camera)         // ① 씬을 텍스처로
+ShaderPass(Composite)             // ② 유체 dye 덧칠 + velocity로 살짝 왜곡
+UnrealBloomPass(size,0.15,0.5,0.9)// ③ 밝은 부분 번지게(은은)
+OutputPass                        // ④ 톤매핑 + sRGB 출력
 ```
-
-### 합성 셰이더 (29–44행)
-```glsl
-vec2 vel = texture2D(uVelocity, vUv).xy;     // 유체 속도
-vec2 uv = vUv + vel * uDistort;              // 그 속도로 씬 UV를 살짝 밀어 왜곡(datamosh)
-vec3 scene = texture2D(tDiffuse, uv).rgb;    // 왜곡된 산 그림
-vec3 dye = texture2D(uDye, vUv).rgb;         // 유체 잉크
-vec3 col = scene + dye * uMist;              // 더해서 빛나는 안개로
-```
-- `tDiffuse`는 이전 패스(RenderPass) 결과를 EffectComposer가 자동 연결.
-- `uMist`/`uDistort`는 9번 레이어(Fluid) 토글 시 0으로 만들어 효과 끔.
-
-### 블룸
-- `UnrealBloomPass(해상도, strength 0.35, radius 0.5, threshold 0.85)`:
-  밝기 0.85 넘는 부분만 추출 → 밉맵으로 번지게 → 원본에 더함. 능선·지평선이 은은히 발광.
+합성 셰이더: `col = scene(살짝 왜곡) + dye*uMist`. 9번 토글이 유체+합성을 함께 켬.
 
 ---
 
 ## 9. 나머지 파일
 
-### `projects.js`
+### projects.js — 원본에서 추출한 실프리셋
 ```js
-export const HEIGHTMAPS = ['textures/landscape.jpg', 'textures/terrain003.jpg', ...]; // 4개
-const MOODS = {
-  mist:  { a:'#10151a', b:'#3c454c', haze:'#c6cbce', sky:'#9aa8b4' }, // 계곡/능선/안개/하늘
-  ember: { a:'#1d0e07', b:'#7c4a2a', haze:'#d2a276', sky:'#74513a' },
-  ...
-};
-export const PROJECTS = [
-  { name:'Victorinox', dispIndex:0, mood:'mist' }, ...
-].map(p => ({ ...p, ...MOODS[p.mood] })); // 각 프로젝트에 무드 색을 펼쳐 합침
+{ name:'Victorinox', disp:0, dispScale:77.2, dispOff:[.283,.543], fog:'#E8664B', texScale:1.0, texOff:[.283,.489], contrast:2.29 }
+// disp=높이맵번호, dispScale=산높이, dispOff=높이맵위치, fog=분위기색
 ```
-- `dispIndex`: 그 프로젝트가 쓸 높이맵 번호. `mood`: 색 팔레트.
+- 표면 텍스처 = `base-grayscale.jpg`(흑백 마블). 원본도 컬러 텍스처를 **채도 0**으로 흑백화해 씀 → 색은 fog에서.
 
-### `ui.js`
-- `_buildList()`: PROJECTS로 `<a>` 목록 생성, 각 항목에 `mouseenter`→`onHover(i)` 연결.
-- `setProgress()`/`ready()`: 로딩매니저가 호출 → 진행바, ENTER 버튼.
-- `startAmbient()`: WebAudio로 앰비언트 패드 생성(에셋 없이). 원본은 Howler+mp3.
+### ui.js
+- `_buildList()`: 각 메뉴 `<a>`에 **click** → `onHover(i)` (active 표시 + 프리셋 적용). 호버 아님, 유지됨.
+- LoadingManager 진행률, 자동 입장(소리 없음).
 
-### `panel.js`
-```js
-export class Panel {
-  constructor(layers){ this.layers = layers.map(l=>({...l, enabled:true})); this._build(); }
-  set(i,on){ ...; on ? l.on() : l.off(); }     // 체크박스 변경 → on()/off() 호출
-  next(){ 첫 번째 꺼진 레이어를 켬; }            // ▶ NEXT
-  reset(){ 1번만 남기고 다 끔; }                 // ⟲ RESET
-}
-```
-- main.js가 넘긴 `[{id,label,on,off}]` 배열로 동작. UI와 로직이 분리돼 있음.
+### panel.js
+- main이 넘긴 `[{id,label,on,off}]`로 동작. NEXT(한 겹씩)·RESET(1번만)·ALL.
 
 ---
 
 ## 10. GLSL 미니 사전
 
-셰이더에서 계속 나오는 함수들 (비개발자용):
-
-| 함수 | 뜻 | 예 |
-|------|-----|----|
-| `mix(a, b, t)` | a와 b를 t(0~1)비율로 섞기 | `mix(검정,흰,0.5)`=회색 |
-| `smoothstep(lo,hi,x)` | x를 lo~hi 구간에서 0→1로 부드럽게 | 경계 부드럽게 |
-| `clamp(x,lo,hi)` | x를 lo~hi로 가둠 | 음수/초과 방지 |
-| `dot(a, b)` | 두 벡터의 "일치도" | 조명·각도 계산 |
-| `normalize(v)` | 길이를 1로 (방향만) | 법선·방향 |
-| `texture2D(t, uv)` | 텍스처 uv 위치 픽셀값 | 높이·색 읽기 |
-| `pow(x, n)` | x의 n제곱 | 프레넬·하이라이트 |
-| `length(v)` | 벡터 길이(거리) | 카메라 거리 |
-| `discard` | 이 픽셀 안 그림 | 물 밖 땅 |
-| `vec2/3/4` | 숫자 2/3/4개 묶음 | 좌표·색·속도 |
-| `.r .xy .rgb` | 묶음에서 일부 꺼내기 | `색.rgb`, `속도.xy` |
+| 함수 | 뜻 |
+|------|-----|
+| `mix(a,b,t)` | a,b를 t비율로 섞기 |
+| `smoothstep(lo,hi,x)` | x를 lo~hi에서 0→1 부드럽게 |
+| `clamp(x,lo,hi)` | 범위로 가둠 |
+| `dot(a,b)` | 두 벡터 일치도(조명·각도) |
+| `normalize(v)` | 길이 1로(방향만) |
+| `texture2D(t,uv)` | 텍스처 픽셀값 |
+| `fract / floor` | 소수부 / 내림 (셀 격자·해시) |
+| `sin / pow / length` | 파동·프레넬·거리 |
+| `discard` | 이 픽셀 안 그림 |
 
 ---
 
-## 부록: "이 효과를 바꾸려면 어디를?"
+## 11. 부록: "이 효과 바꾸려면 어디를?"
 
 | 바꾸고 싶은 것 | 위치 |
 |----------------|------|
-| 산 높이 | `Terrain.js` `uDispScale` (108) |
-| 카메라 각도 | `main.js` `camera.position` / `camTarget` (33–34) |
-| 안개 농도 | `Terrain.js` `uFogNear`/`uFogFar` (145–146) |
-| 햇빛 방향 | `Terrain.js` `uSunDir` (148) |
-| 무드 색 | `projects.js` `MOODS` |
-| 물 높이 | `Water.js` `waterLevel` (92) |
-| 블룸 세기 | `Post.js` `UnrealBloomPass(..., 0.35, ...)` (56) |
-| 유체 해상도/점성 | `Fluid.js` `simRes`(40), `dissipation`(259/266) |
-| 모핑 속도 | `main.js` `applyMood`의 `duration` (88) |
+| 나무 밀도 | `Terrain.js` `vUv * 240.0` |
+| 나무 색 / 벚꽃 양 | `Terrain.js` `baseGreen`, `r3 > 0.93` |
+| 암석 경사 문턱 | `Terrain.js` `smoothstep(0.40, 0.54, slope)` |
+| 폭포 양 / 위치 | `Terrain.js` `valley`(0.15), `streak`(0.88) |
+| 조명 세기 | `Terrain.js` `0.25 + 0.8*diff` + `uSunDir` |
+| 안개 거리 | `Terrain.js` `uFogNear/uFogFar` (560/1450) |
+| 해수면 높이 | `main.js` `applyPreset`의 `0.55` |
+| 카메라 | `main.js` `camera.position` / `fov 30` |
+| 모프 속도 | `main.js` `uMorph` 트윈 `duration: 1.6` |
+| 무드 색 | `projects.js` 각 프리셋 `fog` |
+| 블룸 세기 | `Post.js` `UnrealBloomPass(..., 0.15, ...)` |
